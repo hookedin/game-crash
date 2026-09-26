@@ -13,7 +13,6 @@ test('the actual SDK wallet signs a flight bet, verifies the developer’s settl
   let now = Date.now();
   const room = new Room({
     developer: x.developer,
-    asset: 'eth',
     now: () => now,
     secret: () => SECRET,
     save: async () => {},

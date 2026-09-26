@@ -1,7 +1,8 @@
 # Afterburn
 
 A multiplayer Crash demo for [HookedIn](https://hookedin.com). One rocket, one rising multiplier, and a different exit
-plan for every player. Page and server ship together as one Cloudflare Worker, with a Durable Object per asset.
+plan for every player. Page and server ship together as one Cloudflare Worker, with one Durable Object for the room.
+The rocket flies with ETH: a wallet that practices with test coins watches the flight.
 
 The game includes manual and automatic escape, a live crew list, synthesized sound, keyboard controls, reduced motion,
 mobile layouts, durable cash-out decisions and a flight recorder that checks each revealed commitment.
@@ -60,7 +61,7 @@ controls timing and payment. The wallet checks each signed settlement; it does n
 | ------------------ | ------------------------------------------------------------------------------------- |
 | `src/rules.ts`     | Crash distribution, timing, integer payouts, terms and proof checking                 |
 | `server/room.ts`   | Shared flight, crew admission, escape decisions, durable state and settlement retries |
-| `server/worker.ts` | HTTP routes, one Durable Object per asset, durable storage and alarms                 |
+| `server/worker.ts` | HTTP routes, the room's Durable Object, durable storage and alarms                    |
 | `src/game.ts`      | Wallet requests and recovery, live crew, controls, receipt checks and flight recorder |
 | `src/sky.ts`       | Rocket, curve and particles; presentation only                                        |
 | `test/`            | Rules, recovery, SDK wallet integration, two-browser test and local preview           |
@@ -68,7 +69,7 @@ controls timing and payment. The wallet checks each signed settlement; it does n
 The page saves the operation ID, stake, flight, auto target and a random escape key before asking the wallet to sign.
 The bet's meta contains only the key's hash and the auto target. Manual escape proves possession of that key; public
 bet records cannot authorize someone else's escape. Reloading restores the request and the key in storage scoped to
-the player, chain and asset. A lost cash-out reply can be retried against the same saved decision.
+the player and chain. A lost cash-out reply can be retried against the same saved decision.
 
 Room changes are serialized and persisted before acknowledgement. A failed write cannot leave an acknowledged
 in-memory decision. Casino reads and settlements run outside that queue, so a slow casino request does not block
@@ -112,7 +113,7 @@ cash-out through reload, wallet receipt collection, proof checking and mobile ov
 3. In the repository's Actions settings, add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
 4. Push to `main`. The workflow tests, builds and deploys. `npm ci` installs `@hookedin/play` from its locked commit on
    `main`; the update workflow takes current `main` every six hours and tests it before pushing the lockfile.
-5. Publish the manifest as `crash` in the wallet and fund the developer bank in each asset you offer.
+5. Publish the manifest as `crash` in the wallet and fund the developer bank.
 
 `npx wrangler deploy` publishes by hand. The intended route is `crash-game.hookedin.com`; configuring that route does
 not establish that the game has been deployed or listed.

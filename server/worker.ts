@@ -10,11 +10,10 @@ interface Env {
   GAME_NAME: string;
   DEVELOPER_KEY: string;
 }
-const assetOf = (url: URL) => (url.searchParams.get('asset') === 'test' ? 'test' : 'eth');
 const json = (value: unknown, status = 200) =>
   Response.json(value, { status, headers: { 'Cache-Control': 'no-store' } });
 
-/** One durable room per asset, shared by every player and driven by alarms even when every page disconnects. */
+/** One durable room, shared by every player and driven by alarms even when every page disconnects. */
 export class CrashRoom implements DurableObject {
   private room: Promise<Room> | null = null;
   readonly ctx: DurableObjectState;
@@ -24,17 +23,15 @@ export class CrashRoom implements DurableObject {
     this.env = env;
   }
 
-  private open(asset: 'eth' | 'test') {
-    return (this.room ??= (async () => {
-      await this.ctx.storage.put('asset', asset);
-      return new Room(
+  private open() {
+    return (this.room ??= (async () =>
+      new Room(
         {
           developer: await createDeveloper({
             casinoURL: this.env.CASINO_URL,
             key: this.env.DEVELOPER_KEY,
             name: this.env.GAME_NAME,
           }),
-          asset,
           now: () => Date.now(),
           secret: () =>
             '0x' +
@@ -45,8 +42,7 @@ export class CrashRoom implements DurableObject {
           wake: at => this.ctx.storage.setAlarm(at),
         },
         await this.ctx.storage.get<RoomState>('state'),
-      );
-    })().catch(error => {
+      ))().catch(error => {
       this.room = null;
       throw error;
     }));
@@ -59,7 +55,7 @@ export class CrashRoom implements DurableObject {
   async fetch(request: Request) {
     try {
       const url = new URL(request.url),
-        room = await this.open(assetOf(url));
+        room = await this.open();
       if (url.pathname === '/api/flight' && request.method === 'GET') {
         const flight = await room.view();
         this.sync(room);
@@ -102,7 +98,7 @@ export class CrashRoom implements DurableObject {
   async alarm() {
     let room: Room | undefined;
     try {
-      room = await (this.room ?? this.open((await this.ctx.storage.get<'eth' | 'test'>('asset')) ?? 'eth'));
+      room = await this.open();
       await room.view();
       await room.sync(true);
     } catch (error: any) {
@@ -117,6 +113,6 @@ export default {
   fetch(request: Request, env: Env) {
     const url = new URL(request.url);
     if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
-    return env.FLIGHTS.get(env.FLIGHTS.idFromName(assetOf(url))).fetch(request);
+    return env.FLIGHTS.get(env.FLIGHTS.idFromName('room')).fetch(request);
   },
 };

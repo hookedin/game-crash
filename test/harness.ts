@@ -32,7 +32,6 @@ export async function startHarness({
     nextSecret = 0;
   const now = () => clock() + offset;
   const room = new Room({
-    asset: 'eth',
     now,
     secret: () =>
       secret
@@ -140,8 +139,7 @@ export async function startHarness({
             for await (const chunk of req) text += chunk;
             const { method, params } = JSON.parse(text);
             result = await pilot.fixture.bridge.call(method, params);
-            if (method === 'wallet.hello')
-              result = { ...(result as object), asset: { id: 'eth', symbol: 'DEMO', decimals: 4 } };
+            if (method === 'wallet.hello') result = { ...(result as object), asset: { symbol: 'DEMO', decimals: 4 } };
             if (method === 'wallet.info') result = { ...(result as object), recommendedStake: '10000' };
           }
           return { result, balance: await pilot.fixture.bridge.balance(), receipts: pilot.events.splice(0) };

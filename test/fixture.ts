@@ -20,7 +20,6 @@ export function fixture(secret = SECRET) {
     writes: RoomState[] = [],
     wakes: number[] = [];
   const deps: RoomDeps = {
-    asset: 'test',
     now: () => now,
     secret: () => (serial++ ? '0x' + serial.toString(16).padStart(64, '0') : secret),
     save: async state => {
@@ -91,7 +90,6 @@ export function fixture(secret = SECRET) {
         bet: '0x' + (bets.size + 1).toString(16).padStart(64, '0'),
         game: 'game',
         group: view.id,
-        asset: 'test',
         uname: `pilot-${bets.size + 1}`,
         alias: null,
         developer: 'developer',

@@ -1,5 +1,5 @@
 import { keccak256 } from 'ethers';
-import type { AssetId, Developer, PublicDeveloperBet } from '@hookedin/play/sdk/developer';
+import type { Developer, PublicDeveloperBet } from '@hookedin/play/sdk/developer';
 import {
   BOARDING_MS,
   COOLDOWN_MS,
@@ -38,7 +38,6 @@ export interface RoomState {
 }
 export interface RoomDeps {
   developer: Pick<Developer, 'bets' | 'settle'>;
-  asset: AssetId;
   now(): number;
   secret(): string;
   save(state: RoomState): Promise<void>;
@@ -221,7 +220,7 @@ export class Room {
       const bets: PublicDeveloperBet[] = [];
       for (let after = ''; ;) {
         const page = await this.deps.developer.bets({ status: 'open', after });
-        bets.push(...page.bets.filter(bet => bet.asset === this.deps.asset));
+        bets.push(...page.bets);
         if (!page.more) break;
         after = page.cursor;
       }

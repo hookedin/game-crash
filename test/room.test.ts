@@ -122,12 +122,11 @@ test('a target at 100× receives the capped payout', async () => {
   assert.equal(x.bets.get(bet.bet)!.settlement!.player, '1000000');
 });
 
-test('duplicates, malformed terms and late bets are returned without commission; assets stay separate', async () => {
+test('duplicates, malformed terms and late bets are returned without commission', async () => {
   const x = fixture();
   const accepted = await x.bet({ uname: 'alice' });
   const duplicate = await x.bet({ uname: 'alice' });
   const malformed = await x.bet({ meta: { escapeHash: 'wrong', auto: 200 } });
-  const eth = await x.bet({ asset: 'eth' });
   await x.room.sync(true);
   const board = await x.room.view();
   assert.deepEqual(
@@ -136,7 +135,6 @@ test('duplicates, malformed terms and late bets are returned without commission;
   );
   for (const bet of [duplicate, malformed])
     assert.deepEqual(x.bets.get(bet.bet)!.settlement, { player: bet.stake, casino: '0', signature: 'signature' });
-  assert.equal(x.bets.get(eth.bet)!.status, 'open');
   x.at(board.startsAt!);
   const late = await x.bet();
   await x.room.sync(true);

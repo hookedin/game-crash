@@ -58,9 +58,8 @@ function fixture(t: any) {
     get room() {
       return room;
     },
-    get: (path = '/api/flight?asset=test') => room.fetch(new Request('https://crash.test' + path)),
-    post: (body: string) =>
-      room.fetch(new Request('https://crash.test/api/cashout?asset=test', { method: 'POST', body })),
+    get: (path = '/api/flight') => room.fetch(new Request('https://crash.test' + path)),
+    post: (body: string) => room.fetch(new Request('https://crash.test/api/cashout', { method: 'POST', body })),
   };
 }
 
@@ -73,11 +72,10 @@ test('the Worker shares startup, publishes no secret, forbids caching and restor
   assert.equal(first.secret, null);
   assert.equal(x.configCalls(), 1);
   assert.equal(a.headers.get('cache-control'), 'no-store');
-  assert.equal((await x.get(`/api/flights/${first.id}?asset=test`)).status, 404);
+  assert.equal((await x.get(`/api/flights/${first.id}`)).status, 404);
   await Promise.all(x.background);
   x.restart();
   assert.equal(((await (await x.get()).json()) as any).id, first.id);
-  assert.equal(x.stored.get('asset'), 'test');
 });
 
 test('startup recovers when the casino returns, and malformed or unauthenticated cash-outs fail', async t => {
@@ -105,7 +103,7 @@ test('an idle room lets its alarm lapse, and an alarm that cannot open the room 
   assert.ok(x.alarms.at(-1)! > Date.now(), 'a room that cannot start tries again shortly');
 });
 
-test('the Worker routes assets into separate rooms and serves the built page through ASSETS', async () => {
+test('the Worker routes every player to the one room and serves the built page through ASSETS', async () => {
   const rooms: string[] = [];
   const env = {
     ASSETS: { fetch: () => new Response('page') },
@@ -120,7 +118,7 @@ test('the Worker routes assets into separate rooms and serves the built page thr
     },
   } as never;
   assert.equal(await (await worker.fetch(new Request('https://crash.test/'), env)).text(), 'page');
-  await worker.fetch(new Request('https://crash.test/api/flight?asset=test'), env);
-  await worker.fetch(new Request('https://crash.test/api/flight?asset=eth'), env);
-  assert.deepEqual(rooms, ['test', 'eth']);
+  await worker.fetch(new Request('https://crash.test/api/flight'), env);
+  await worker.fetch(new Request('https://crash.test/api/placed', { method: 'POST' }), env);
+  assert.deepEqual(rooms, ['room', 'room']);
 });

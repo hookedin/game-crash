@@ -37,7 +37,8 @@ let ready = false,
   finishing = false,
   scope = '',
   asset = 'ETH',
-  assetId = 'eth',
+  /** The wallet practices, and a seat is a developer bet, placed with ETH: the flight is watched, not boarded. */
+  practice = false,
   uname: string | null = null;
 let view: FlightView | null = null,
   saved: Saved | null = null,
@@ -61,7 +62,7 @@ const fresh = () => Boolean(view) && performance.now() - arrivedAt < 1_800;
 const serverNow = () => (view?.now ?? Date.now()) + Math.min(performance.now() - arrivedAt, 1_800);
 
 async function api<T>(path: string, body?: unknown): Promise<T> {
-  const response = await fetch(`./api${path}?asset=${assetId}`, {
+  const response = await fetch(`./api${path}`, {
     ...(body === undefined
       ? {}
       : { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
@@ -215,8 +216,8 @@ function render() {
   const mine = ownTicket(),
     flying = view?.phase === 'flying',
     live = fresh(),
-    locked = working || Boolean(saved);
-  $('connection').textContent = live ? `${assetId === 'test' ? 'TEST COINS' : asset} · LIVE ROOM` : 'RECONNECTING';
+    locked = working || Boolean(saved) || practice;
+  $('connection').textContent = live ? `${practice ? 'WATCHING' : asset} · LIVE ROOM` : 'RECONNECTING';
   $('connection').dataset.live = String(live);
   $('seat-indicator').textContent =
     mine?.status === 'escaped'
@@ -243,7 +244,11 @@ function render() {
     disabled = !ready || !live || working || proofFault;
   const escape = flying && mine?.status === 'aboard' && Boolean(saved?.bet);
   if (!ready) label = 'Connecting wallet…';
-  else if (working) label = saved?.escapeRequested ? 'Confirming escape…' : 'Confirming seat…';
+  else if (practice) {
+    label = 'Seats need ETH';
+    detail = 'WATCH THE SHARED FLIGHT';
+    disabled = true;
+  } else if (working) label = saved?.escapeRequested ? 'Confirming escape…' : 'Confirming seat…';
   else if (saved && !saved.bet) {
     label = 'Resume bet request';
     detail = 'RECOVER YOUR SAVED REQUEST';
@@ -528,7 +533,7 @@ async function start() {
       assetLabels: document.querySelectorAll('[data-asset]'),
     });
     asset = startup.asset;
-    assetId = startup.assetId;
+    practice = startup.practice;
     uname = startup.wallet.uname;
     scope = startup.scope;
     bank.update(startup.state);
@@ -545,7 +550,12 @@ async function start() {
       if (receipt) await receive(receipt);
       else await act(ask);
       if (saved?.bet) setView(await api<FlightView>('/placed', {}));
-    } else message('Choose your stake and an exit plan. Everyone shares the flight.');
+    } else
+      message(
+        practice
+          ? 'The rocket flies with ETH. Watch the shared flight here, and set up your wallet with ETH to take a seat.'
+          : 'Choose your stake and an exit plan. Everyone shares the flight.',
+      );
   } catch (error: any) {
     message(error.message, true);
   }

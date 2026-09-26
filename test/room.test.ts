@@ -26,6 +26,25 @@ test('players share a saved commitment; the first accepted bet starts boarding a
   assert.equal(await x.room.kept(board.id), undefined);
 });
 
+test('the room keeps an alarm only while a flight is under way or a payment is owed', async () => {
+  const x = fixture();
+  await x.room.view();
+  await x.room.sync(true);
+  assert.deepEqual(x.wakes, [], 'an empty launch pad sets no alarm');
+  await x.bet();
+  await x.room.sync(true);
+  assert.ok(x.wakes.length, 'the first accepted bet starts boarding, and the alarm with it');
+  const board = await x.room.view();
+  // After the crash and the cooldown, the lost seat is settled and the next flight opens: nothing is under way.
+  x.at(board.startsAt! + timeTo(crashPoint(SECRET)) + COOLDOWN_MS);
+  await x.room.sync(true);
+  assert.notEqual((await x.room.view()).id, board.id);
+  const lapsed = x.wakes.length;
+  await x.room.view();
+  await x.room.sync(true);
+  assert.equal(x.wakes.length, lapsed, 'and the alarm lapses');
+});
+
 test('only the holder of the escape key can cash out, and concurrent retries return one durable decision', async () => {
   const x = fixture(),
     bet = await x.bet();

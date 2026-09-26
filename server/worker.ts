@@ -98,15 +98,17 @@ export class CrashRoom implements DurableObject {
     }
   }
 
+  /** The room sets its alarm while a flight is under way, and lets it lapse once everything is paid. */
   async alarm() {
+    let room: Room | undefined;
     try {
-      const room = await (this.room ?? this.open((await this.ctx.storage.get<'eth' | 'test'>('asset')) ?? 'eth'));
+      room = await (this.room ?? this.open((await this.ctx.storage.get<'eth' | 'test'>('asset')) ?? 'eth'));
       await room.view();
       await room.sync(true);
     } catch (error: any) {
       console.error('Flight alarm:', error.message);
-    } finally {
-      await this.ctx.storage.setAlarm(Date.now() + 1_000);
+      // A room that cannot start, or that has a flight under way, tries again shortly.
+      if (!room || room.underWay()) await this.ctx.storage.setAlarm(Date.now() + 1_000);
     }
   }
 }

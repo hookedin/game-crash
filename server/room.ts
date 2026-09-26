@@ -56,6 +56,8 @@ export class GameError extends Error {
 }
 
 const publicTicket = ({ escapeHash: _, ...ticket }: Ticket): PublicTicket => ticket;
+/** A flight that has started boarding, or payments still owed: the room has work of its own to do. */
+const underWay = ({ flight, outbox }: RoomState) => (flight !== null && flight.startsAt !== null) || outbox.length > 0;
 const payment = (ticket: Ticket): Payment => ({
   bet: ticket.bet,
   player: ticket.payout!,
@@ -80,11 +82,13 @@ export class Room {
     const next = this.queue.then(async () => {
       const draft = structuredClone(this.state),
         now = this.deps.now();
-      // The alarm is durable even if saving a decision or answering the request fails.
-      await this.deps.wake(now + 1_000);
+      // While a flight is under way, the alarm is durable even if saving a decision or answering the request fails.
+      if (underWay(this.state)) await this.deps.wake(now + 1_000);
       await this.advance(draft, now);
       const result = await work(draft, now);
       if (JSON.stringify(draft) !== JSON.stringify(this.state)) await this.deps.save(draft);
+      // The first accepted bet starts boarding, and the alarm with it.
+      if (!underWay(this.state) && underWay(draft)) await this.deps.wake(now + 1_000);
       this.state = draft;
       return result;
     });
@@ -147,6 +151,12 @@ export class Room {
       draft.history = [{ id: flight.id, point }, ...draft.history].slice(0, 12);
       draft.flight = this.newFlight();
     }
+  }
+
+  /** Whether a flight has started boarding or a payment is still owed. An idle room needs no alarm: the next page to
+   * open it, or the bet a page reports, wakes it. */
+  underWay() {
+    return underWay(this.state);
   }
 
   view(): Promise<FlightView> {
@@ -276,7 +286,8 @@ export class Room {
         }
       });
     } finally {
-      await this.deps.wake(this.deps.now() + 1_000);
+      // A failed settlement is tried again shortly.
+      if (underWay(this.state)) await this.deps.wake(this.deps.now() + 1_000);
     }
   }
 }

@@ -73,7 +73,8 @@ the player, chain and asset. A lost cash-out reply can be retried against the sa
 Room changes are serialized and persisted before acknowledgement. A failed write cannot leave an acknowledged
 in-memory decision. Casino reads and settlements run outside that queue, so a slow casino request does not block
 cash-outs. The room saves payouts before settling them; retries send identical amounts. Alarms resolve auto targets
-at their scheduled multiplier even when they wake after the crash. The next flight waits until all payouts have been
+at their scheduled multiplier even when they wake after the crash. The room keeps its alarm only while a flight is
+under way or a payment is owed; an idle room sleeps until the next page or bet wakes it. The next flight waits until all payouts have been
 settled. Completed proofs remain at `/api/flights/<id>`.
 
 Pages poll the room every 500 ms and animate locally. The room refreshes open casino bets at most once per second,

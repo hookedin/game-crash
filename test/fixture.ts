@@ -17,7 +17,8 @@ export function fixture(secret = SECRET) {
   const bets = new Map<string, PublicDeveloperBet>(),
     proofs = new Map<string, FlightProof>();
   const settled: string[] = [],
-    writes: RoomState[] = [];
+    writes: RoomState[] = [],
+    wakes: number[] = [];
   const deps: RoomDeps = {
     asset: 'test',
     now: () => now,
@@ -31,7 +32,9 @@ export function fixture(secret = SECRET) {
       proofs.set(proof.id, structuredClone(proof));
     },
     kept: async id => proofs.get(id),
-    wake: async () => {},
+    wake: async at => {
+      wakes.push(at);
+    },
     developer: {
       bets: async () => ({ bets: [...bets.values()].filter(b => b.status === 'open'), cursor: '', more: false }),
       settle: async payments => {
@@ -56,6 +59,7 @@ export function fixture(secret = SECRET) {
     bets,
     settled,
     writes,
+    wakes,
     get room() {
       return room;
     },

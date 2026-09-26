@@ -91,8 +91,18 @@ test('startup recovers when the casino returns, and malformed or unauthenticated
   assert.equal((await x.post(' '.repeat(1025))).status, 413);
   assert.equal((await x.post(JSON.stringify({ flight: 'wrong', bet: 'wrong', token: 'wrong' }))).status, 403);
   await Promise.all(x.background);
+});
+
+test('an idle room lets its alarm lapse, and an alarm that cannot open the room tries again', async t => {
+  const x = fixture(t);
+  assert.equal((await x.get()).status, 200);
+  await Promise.all(x.background);
   await x.room.alarm();
-  assert.ok(x.alarms.at(-1)! > Date.now());
+  assert.deepEqual(x.alarms, [], 'nothing is under way, so nothing is scheduled');
+  x.reachable(false);
+  x.restart();
+  await x.room.alarm();
+  assert.ok(x.alarms.at(-1)! > Date.now(), 'a room that cannot start tries again shortly');
 });
 
 test('the Worker routes assets into separate rooms and serves the built page through ASSETS', async () => {

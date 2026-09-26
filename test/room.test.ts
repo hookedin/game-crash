@@ -142,6 +142,28 @@ test('duplicates, malformed terms and late bets are returned without commission'
   assert.equal((await x.room.view()).tickets.length, 1);
 });
 
+test('a forced sync reads the casino after it was asked: a bet placed while another refresh runs is seated', async () => {
+  const x = fixture();
+  // A malformed bet is returned, and its settlement keeps the refresh that returns it busy.
+  await x.bet({ meta: { escapeHash: 'wrong', auto: 200 } });
+  let release!: () => void;
+  x.pauseSettlement(
+    new Promise<void>(resolve => {
+      release = resolve;
+    }),
+  );
+  const settling = x.room.sync(true);
+  // The page places its bet meanwhile, then asks the room to look, as /placed does.
+  const placed = await x.bet();
+  const seated = x.room.sync(true);
+  release();
+  await Promise.all([settling, seated]);
+  assert.deepEqual(
+    (await x.room.view()).tickets.map(t => t.bet),
+    [placed.bet],
+  );
+});
+
 test('an acknowledged escape survives a lost settlement reply and eviction without a second payout', async () => {
   const x = fixture(),
     bet = await x.bet();

@@ -69,6 +69,7 @@ export class Room {
   private state: RoomState;
   private queue: Promise<unknown> = Promise.resolve();
   private syncing: Promise<void> | null = null;
+  private again: Promise<void> | null = null;
   private lastSync = -Infinity;
   readonly deps: RoomDeps;
 
@@ -204,8 +205,17 @@ export class Room {
     });
   }
 
-  /** Refresh from the casino at most once per second. Calls during a refresh share it; cash-outs never wait for it. */
+  /** Refresh from the casino at most once per second. Calls during a refresh share it, except a forced one: it reads the
+   * casino after it was asked, since the refresh under way may have read it before the bet its caller placed, so every
+   * forced call meanwhile shares the refresh that follows. Cash-outs never wait for either. */
   sync(force = false): Promise<void> {
+    if (this.syncing && force)
+      return (this.again ??= this.syncing
+        .catch(() => {})
+        .then(() => {
+          this.again = null;
+          return this.sync(true);
+        }));
     if (this.syncing) return this.syncing;
     if (!force && this.deps.now() - this.lastSync < 1_000) return Promise.resolve();
     this.lastSync = this.deps.now();

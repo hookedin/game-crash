@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright-core';
+import type { FrameLocator } from 'playwright-core';
 import { mkdir } from 'node:fs/promises';
 import { startHarness } from './harness.ts';
 import { SECRET } from './fixture.ts';
@@ -19,16 +20,29 @@ test(
       bob = await context.newPage(),
       errors: string[] = [];
     for (const page of [alice, bob]) page.on('pageerror', error => errors.push(error.message));
+    // The second pilot's browser has no Web Audio: sound decorates the game, and it plays on without it.
+    await bob.addInitScript('delete window.AudioContext');
     await Promise.all([alice.goto(host.url), bob.goto(host.url)]);
     const a = alice.frameLocator('iframe'),
       b = bob.frameLocator('iframe');
+    /** A pilot's seat, and what its page says if the seat never comes. */
+    const aboard = (pilot: FrameLocator) =>
+      pilot
+        .locator('#seat-indicator', { hasText: 'ABOARD' })
+        .waitFor()
+        .catch(async error => {
+          const says = await Promise.all(['#status', '#action-label'].map(id => pilot.locator(id).textContent()));
+          throw new Error(
+            `${error.message}\nThe page says: ${says.join(' · ')}\nPage errors: ${errors.join('; ') || 'none'}`,
+          );
+        });
     await a.locator('#action:not([disabled])').waitFor();
     await b.locator('#action:not([disabled])').waitFor();
     await a.locator('#auto-enabled').uncheck();
     await a.locator('#action').click();
-    await a.locator('#seat-indicator', { hasText: 'ABOARD' }).waitFor();
+    await aboard(a);
     await b.locator('#action').click();
-    await b.locator('#seat-indicator', { hasText: 'ABOARD' }).waitFor();
+    await aboard(b);
     await a.locator('#crew-count', { hasText: /^2$/ }).waitFor();
     assert.equal(await a.locator('#flight-id').textContent(), await b.locator('#flight-id').textContent());
     await mkdir('test-results', { recursive: true });
@@ -51,7 +65,7 @@ test(
     assert.match((await a.locator('#status').textContent()) ?? '', /received in your wallet/);
     // The second page reloads while its preset is still active. The same saved bet and escape key are recovered.
     await bob.reload();
-    await b.locator('#seat-indicator', { hasText: 'ABOARD' }).waitFor();
+    await aboard(b);
     await host.advance(timeTo(200));
     await b.locator('#status', { hasText: /Escaped at 2.00×/ }).waitFor();
     await a.locator('#escaped-count', { hasText: /^2$/ }).waitFor();

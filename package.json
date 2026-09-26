@@ -1,0 +1,33 @@
+{
+  "name": "@hookedin/game-crash",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "repository": "github:hookedin/game-crash",
+  "engines": {
+    "node": ">=24.4"
+  },
+  "scripts": {
+    "build": "hookedin-game build",
+    "dev": "wrangler dev",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p server/tsconfig.json --noEmit",
+    "test": "npm run typecheck && npm run build && node --import tsx --test test/*.test.ts server/*.test.ts",
+    "demo": "npm run build && node --import tsx test/harness.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "@hookedin/play": "git+https://github.com/hookedin/play.git#main",
+    "ethers": "6.17.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20260919.1",
+    "@types/node": "24.13.5",
+    "playwright-core": "1.63.0",
+    "prettier": "3.9.8",
+    "tsx": "4.23.13",
+    "typescript": "7.0.2",
+    "wrangler": "4.135.0"
+  }
+}

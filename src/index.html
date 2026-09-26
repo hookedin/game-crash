@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#101219" />
+    <title>Afterburn · HookedIn</title>
+    <link rel="icon" type="image/svg+xml" href="./brand/hookedin-mark.svg" />
+    <link rel="stylesheet" href="./shared.css" />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main>
+      <header class="masthead">
+        <div class="identity">
+          <img src="./brand/hookedin-mark.svg" alt="HookedIn" width="26" height="26" /><span
+            >HOOKEDIN <b>/</b> ORIGINALS</span
+          >
+        </div>
+        <div class="header-right">
+          <span class="connection" id="connection">CONNECTING</span
+          ><button id="sound" class="icon-button" type="button" aria-label="Turn sound off" aria-pressed="false">
+            SOUND ON
+          </button>
+        </div>
+      </header>
+      <div class="title-row">
+        <div>
+          <div class="overline">ONE ROCKET. EVERY PLAYER.</div>
+          <h1>AFTER<span>BURN</span><i>↗</i></h1>
+        </div>
+        <span class="game-kind">MULTIPLAYER CRASH</span>
+      </div>
+      <div class="recent-bar">
+        <span class="tiny-label">FLIGHT RECORDER</span>
+        <div id="history" class="history" aria-label="Recent flights">
+          <span class="history-empty">Your next flight starts here.</span>
+        </div>
+      </div>
+      <div class="game-grid">
+        <section class="flight-stage" id="stage" data-phase="boarding" aria-label="Shared flight">
+          <canvas id="sky" aria-hidden="true"></canvas>
+          <div class="stage-top">
+            <span class="stage-phase" id="phase">LAUNCH PAD</span
+            ><span class="flight-number" id="flight-id">FLIGHT —</span>
+          </div>
+          <div class="flight-readout">
+            <div id="readout-label" class="tiny-label">READY WHEN YOU ARE</div>
+            <div id="multiplier" class="multiplier">1.00<span>×</span></div>
+            <p id="flight-caption">Find your seat. The sky is shared.</p>
+          </div>
+          <div id="escape-toast" class="escape-toast" role="status" aria-live="polite" hidden></div>
+          <div class="stage-bottom">
+            <span id="stage-note">8 seconds to board · escape up to 100×</span
+            ><span class="coordinates">AB / FLIGHT CONTROL <b>↗</b></span>
+          </div>
+          <div class="boarding-track"><div id="boarding-progress"></div></div>
+        </section>
+        <aside class="cockpit" aria-label="Your flight controls">
+          <div class="panel-heading">
+            <h2>YOUR SEAT</h2>
+            <span id="seat-indicator">STANDBY</span>
+          </div>
+          <div id="bank"></div>
+          <label class="control-label" for="stake">STAKE <span data-asset>ETH</span></label>
+          <div class="stake-control">
+            <button type="button" id="bet-down" aria-label="Halve stake">½</button
+            ><input id="stake" value="0.000001" inputmode="decimal" autocomplete="off" /><button
+              type="button"
+              id="bet-up"
+              aria-label="Double stake"
+            >
+              2×
+            </button>
+          </div>
+          <div class="auto-heading">
+            <label for="auto-enabled">Auto escape</label
+            ><input type="checkbox" id="auto-enabled" checked role="switch" />
+          </div>
+          <div class="target-control">
+            <label for="auto-target" class="sr-only">Auto escape multiplier</label
+            ><input id="auto-target" inputmode="decimal" value="2.00" autocomplete="off" /><span>×</span
+            ><span class="target-caption">YOUR TARGET</span>
+          </div>
+          <div class="presets" aria-label="Auto escape presets">
+            <button type="button" data-target="1.50">1.5×</button
+            ><button type="button" data-target="2.00" data-selected="true">2×</button
+            ><button type="button" data-target="5.00">5×</button><button type="button" data-target="10.00">10×</button>
+          </div>
+          <p class="auto-note" id="auto-note">Your target stays active if you disconnect.</p>
+          <button type="button" class="flight-action" id="action" disabled>
+            <span id="action-label">Connecting wallet…</span><span id="action-detail">ONE SHARED FLIGHT</span>
+          </button>
+          <p id="status" class="pilot-status" role="status" aria-live="polite">Connecting to your wallet…</p>
+          <div class="session-result"><span>YOUR SESSION NET</span><strong id="session-net">—</strong></div>
+          <p class="shortcut">During flight, press <kbd>SPACE</kbd> to escape.</p>
+        </aside>
+        <section class="crew-panel" aria-label="Players on this flight">
+          <div class="crew-heading">
+            <div>
+              <h2>FLIGHT CREW <span id="crew-count">0</span></h2>
+              <p>Same rocket. Different exit plans.</p>
+            </div>
+            <div class="crew-totals">
+              <span><b id="escaped-count">0</b> ESCAPED</span
+              ><span><b id="total-staked">0</b> <span data-asset>ETH</span> ABOARD</span>
+            </div>
+          </div>
+          <div class="crew-columns">
+            <span>PILOT</span><span>STAKE</span><span>FLIGHT STATUS</span><span>RETURNED</span>
+          </div>
+          <div id="crew" class="crew">
+            <div class="empty-crew">
+              <span class="empty-orbit">◎</span><strong>The launch pad is open.</strong>
+              <p>Be the first aboard. Invite a friend to join the same flight.</p>
+            </div>
+          </div>
+        </section>
+      </div>
+      <footer>
+        <span class="footer-brand">AFTERBURN <b>/</b> HOOKEDIN STUDIO</span>
+        <details class="rules">
+          <summary>Flight rules &amp; trust</summary>
+          <div>
+            <p>
+              Place one bet per flight. The first accepted bet starts an eight-second boarding window. All players using
+              the same asset share the rocket. Escape during flight to receive your stake multiplied by the server’s
+              multiplier. Cash-outs count when the server processes them, so network delay matters.
+            </p>
+            <p>
+              Auto escape is set before boarding and survives disconnection. Its target must be strictly below the crash
+              point; a target at the crash point loses. A flight can crash instantly at 1.00×. At 100× everyone still
+              aboard escapes automatically. Payouts round down to whole wei. Bets the room does not accept, including
+              late bets and duplicate seats, are returned.
+            </p>
+            <p>
+              This is a developer bet: your stake goes to the game developer’s bank, which pays the result. The server
+              chooses a secret and publishes its hash before boarding, then reveals the secret after the flight. The
+              recorder checks that the secret produces the committed crash point. This checks the commitment; it does
+              not prove an unbiased choice of secret, cash-out timing, or that the developer can pay. The wallet
+              verifies the developer’s signed payment.
+            </p>
+          </div>
+        </details>
+      </footer>
+      <dialog id="proof-dialog">
+        <button class="dialog-close" id="close-proof" type="button" aria-label="Close flight recorder">×</button>
+        <div class="overline">FLIGHT RECORDER</div>
+        <h2 id="proof-title">Checking flight…</h2>
+        <p id="proof-status" role="status"></p>
+        <dl>
+          <dt>COMMITMENT · PUBLISHED BEFORE BOARDING</dt>
+          <dd id="proof-id"></dd>
+          <dt>SECRET · REVEALED AFTER FLIGHT</dt>
+          <dd id="proof-secret"></dd>
+        </dl>
+        <p class="proof-note">
+          A matching commitment checks the crash point. You trust the developer for the secret’s selection, escape
+          timing and payment.
+        </p>
+      </dialog>
+    </main>
+    <script type="module" src="./game.js" crossorigin="anonymous"></script>
+  </body>
+</html>

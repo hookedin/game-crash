@@ -1,0 +1,35 @@
+# Every six hours, or on demand: take play's newest main, which carries the game SDK. If anything moved and the tests
+# pass, commit the lockfile and release the game. A push made by a workflow starts no other workflow, so Deploy is
+# started here.
+name: Update play
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm update
+      - id: lock
+        run: git diff --quiet package-lock.json || echo moved=true >> "$GITHUB_OUTPUT"
+      - if: steps.lock.outputs.moved
+        run: npm test && npm run build
+      - if: steps.lock.outputs.moved
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Update play' package-lock.json
+          git push
+          gh workflow run deploy.yml

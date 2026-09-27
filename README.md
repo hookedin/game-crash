@@ -5,7 +5,7 @@ plan for every player. Page and server ship together as one Cloudflare Worker, w
 The rocket flies with ETH: a wallet that practices watches the flight.
 
 The game includes manual and automatic escape, a live crew list, synthesized sound, keyboard controls, reduced motion,
-mobile layouts, durable cash-out decisions and a flight recorder that checks each revealed commitment.
+mobile layouts, durable cash-out decisions and recent crash points that each check their revealed secret.
 
 ## Try it locally
 
@@ -29,7 +29,7 @@ The preview harness is in `test/` and is not part of the Worker or its built ass
 - Auto escape runs on the server, including while the page is closed. Its target must be **strictly below** the crash
   point. A target at the crash point loses. A flight can crash instantly at 1.00×.
 - At 100× everyone still aboard escapes automatically. Amounts round down to whole wei.
-- Select a result in the flight recorder to check its secret against the commitment published before boarding.
+- Select a recent crash point to check its secret against the flight ID published before boarding.
 
 Cash-outs count when the room starts processing them. The animated multiplier is an estimate between server updates;
 network delay matters. An **accepted** escape has been saved by the room. A **received** payout has been verified and
@@ -51,7 +51,7 @@ is `min(10000, max(100, floor(99 × N / (N − u))))`. The multiplier at elapsed
 `ceil(6500 × ln(point / 100))` milliseconds. Auto escape at the same instant loses, except at the forced 100× exit.
 The point and secret are withheld until the flight ends.
 
-The recorder proves that a revealed secret matches the flight's commitment and produces its displayed crash point.
+The check proves that a revealed secret matches the flight's commitment and produces its displayed crash point.
 **It does not prove unbiased secret selection, cash-out timing or solvency.** The developer knows the secret and
 controls timing and payment. The wallet checks each signed settlement; it does not certify the game's wider rules.
 
@@ -62,7 +62,7 @@ controls timing and payment. The wallet checks each signed settlement; it does n
 | `src/rules.ts`     | Crash distribution, timing, integer payouts, terms and proof checking                 |
 | `server/room.ts`   | Shared flight, crew admission, escape decisions, durable state and settlement retries |
 | `server/worker.ts` | HTTP routes, the room's Durable Object, durable storage and alarms                    |
-| `src/game.ts`      | Wallet requests and recovery, live crew, controls, receipt checks and flight recorder |
+| `src/game.ts`      | Wallet requests and recovery, live crew, controls, receipt checks and flight checks   |
 | `src/sky.ts`       | Rocket, curve and particles; presentation only                                        |
 | `src/icon.svg`     | The icon the wallet shows the game by: a square SVG of one symbol                     |
 | `test/`            | Rules, recovery, SDK wallet integration, two-browser test and local preview           |

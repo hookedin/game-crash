@@ -28,7 +28,7 @@ test(
     /** A pilot's seat, and what its page says if the seat never comes. */
     const aboard = (pilot: FrameLocator) =>
       pilot
-        .locator('#seat-indicator', { hasText: 'ABOARD' })
+        .locator('.crew-row[data-state=aboard]', { hasText: 'YOU' })
         .waitFor()
         .catch(async error => {
           const says = await Promise.all(['#status', '#action-label'].map(id => pilot.locator(id).textContent()));
@@ -59,11 +59,11 @@ test(
       await route.fulfill({ response });
     });
     await a.locator('#action').click();
-    await a.locator('#status', { hasText: /received in your wallet/ }).waitFor();
+    await a.locator('#status', { hasText: /is in your balance/ }).waitFor();
     releaseCashout();
     await a.locator('#action-label', { hasText: /^Escaped ✓$/ }).waitFor();
-    assert.match((await a.locator('#status').textContent()) ?? '', /received in your wallet/);
-    // The second page reloads while its preset is still active. The same saved bet and escape key are recovered.
+    assert.match((await a.locator('#status').textContent()) ?? '', /is in your balance/);
+    // The second page reloads while its auto escape is still active. The same saved bet and escape key are recovered.
     await bob.reload();
     await aboard(b);
     await host.advance(timeTo(200));
@@ -73,12 +73,19 @@ test(
     await a.locator('#history button').first().waitFor();
     await a.locator('#history button').first().click();
     await a.locator('#proof-status[data-valid=true]').waitFor();
-    assert.match((await a.locator('#proof-status').textContent()) ?? '', /Commitment matches/);
+    assert.match((await a.locator('#proof-status').textContent()) ?? '', /^Match:/);
     await a.locator('#close-proof').click();
-    // Keyboard focus and the mobile grid remain usable without horizontal scrolling.
-    await alice.setViewportSize({ width: 390, height: 844 });
-    const metrics = await a.locator('body').evaluate(body => ({ page: body.scrollWidth, viewport: window.innerWidth }));
+    // A phone's wallet leaves the game 375x700 (the preview's header takes 30px more): no horizontal scrolling, and
+    // the action in view without scrolling.
+    await alice.setViewportSize({ width: 375, height: 730 });
+    const metrics = await a.locator('body').evaluate(body => ({
+      page: body.scrollWidth,
+      viewport: window.innerWidth,
+      action: document.getElementById('action')!.getBoundingClientRect().bottom,
+      height: window.innerHeight,
+    }));
     assert.ok(metrics.page <= metrics.viewport, `${metrics.page} overflows ${metrics.viewport}`);
+    assert.ok(metrics.action <= metrics.height, `the action ends at ${metrics.action}, below ${metrics.height}`);
     await alice.screenshot({ path: 'test-results/mobile.png' });
     assert.deepEqual(errors, []);
     assert.equal((await host.room.view()).history.length, 1);

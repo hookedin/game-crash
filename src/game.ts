@@ -28,7 +28,9 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getEleme
 const stake = $<HTMLInputElement>('stake'),
   target = $<HTMLInputElement>('auto-target'),
   auto = $<HTMLInputElement>('auto-enabled');
-const action = $<HTMLButtonElement>('action');
+const action = $<HTMLButtonElement>('action'),
+  stage = $('stage'),
+  toastBox = $('toast');
 const bank = mountBank($('bank')),
   sound = createSynth('afterburn:sound');
 const sky = createSky($<HTMLCanvasElement>('sky'), matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -43,13 +45,13 @@ let ready = false,
 let view: FlightView | null = null,
   saved: Saved | null = null,
   arrivedAt = 0,
-  net = 0n,
   proofFault = false;
 let lastPhase = '',
   lastFlight = '',
   lastTick = -1,
   toastUntil = 0,
-  lastRender = 0;
+  lastRender = 0,
+  shownMultiplier = '';
 const announced = new Set<string>();
 const message = (text: string, error = false) => {
   $('status').textContent = text;
@@ -60,6 +62,9 @@ const amount = (value: string | bigint) => HookedIn.formatAmount(value, 6);
 const ownTicket = () => view?.tickets.find(t => t.bet === saved?.bet || t.uname === uname);
 const fresh = () => Boolean(view) && performance.now() - arrivedAt < 1_800;
 const serverNow = () => (view?.now ?? Date.now()) + Math.min(performance.now() - arrivedAt, 1_800);
+/** The multiplier on screen: the room's, carried forward between its updates. */
+const multiplierNow = () =>
+  view?.phase === 'flying' ? multiplierAt(serverNow() - view.startsAt!) : view?.phase === 'ended' ? view.point! : 100;
 
 async function api<T>(path: string, body?: unknown): Promise<T> {
   const response = await fetch(`./api${path}`, {
@@ -69,8 +74,8 @@ async function api<T>(path: string, body?: unknown): Promise<T> {
     signal: AbortSignal.timeout(8_000),
     cache: 'no-store',
   });
-  const value = await response.json();
-  if (!response.ok) throw new Error(value.error || 'Flight control is unavailable.');
+  const value = await response.json().catch(() => null);
+  if (!response.ok || !value) throw new Error(value?.error || 'The room is unavailable.');
   return value;
 }
 
@@ -83,13 +88,13 @@ function setView(next: FlightView) {
     lastFlight = next.id;
     lastTick = -1;
     toastUntil = 0;
-    $('escape-toast').hidden = true;
+    toastBox.hidden = true;
   }
   if (next.phase === 'ended' && next.secret) {
     const valid = verifyFlight({ ...next, secret: next.secret, point: next.point!, startsAt: next.startsAt! }, next.id);
     if (!valid) {
       proofFault = true;
-      message('Flight proof does not match its commitment. Betting is paused.', true);
+      message('This flight’s secret does not match its ID. Betting is paused.', true);
     }
   }
   if (lastPhase !== next.phase) {
@@ -105,7 +110,7 @@ function setView(next: FlightView) {
     announced.add(ticket.bet);
     if (next.phase === 'flying')
       toast(
-        `${ticket.uname === uname ? 'You' : ticket.alias ? '@' + ticket.alias : '~' + ticket.uname} escaped at ${multiplierText(ticket.multiplier!)}.`,
+        `${ticket.uname === uname ? 'You' : ticket.alias ? '@' + ticket.alias : '~' + ticket.uname} escaped at ${multiplierText(ticket.multiplier!)}`,
       );
   }
   renderCrew();
@@ -114,8 +119,8 @@ function setView(next: FlightView) {
 }
 
 function toast(text: string) {
-  $('escape-toast').textContent = text;
-  $('escape-toast').hidden = false;
+  toastBox.textContent = text;
+  toastBox.hidden = false;
   toastUntil = performance.now() + 3_200;
 }
 
@@ -125,45 +130,39 @@ function renderCrew() {
   $('crew-count').textContent = String(tickets.length);
   $('escaped-count').textContent = String(tickets.filter(t => t.status === 'escaped').length);
   $('total-staked').textContent = amount(tickets.reduce((sum, t) => sum + BigInt(t.stake), 0n));
+  $('flight-id').textContent = `Flight ${view.id.slice(0, 8).toUpperCase()}`;
   if (!tickets.length) {
-    $('crew').innerHTML =
-      '<div class="empty-crew"><span class="empty-orbit">◎</span><strong>The launch pad is open.</strong><p>Be the first aboard. Invite a friend to join the same flight.</p></div>';
+    $('crew').innerHTML = '<p class="empty-crew">No one aboard yet. The first seat starts the countdown.</p>';
     return;
   }
+  const cell = (text: string, className = '') => {
+    const span = document.createElement('span');
+    span.className = className;
+    span.textContent = text;
+    return span;
+  };
   $('crew').replaceChildren(
     ...tickets.map(ticket => {
       const row = document.createElement('div');
       row.className = 'crew-row';
       row.dataset.state = ticket.status;
-      const pilot = document.createElement('span');
-      pilot.className = 'pilot';
-      const avatar = document.createElement('span');
-      avatar.className = 'avatar';
-      avatar.textContent = (ticket.alias ?? ticket.uname).slice(0, 1).toUpperCase();
-      const name = document.createElement('span');
-      name.className = 'name';
-      name.textContent = ticket.alias ? '@' + ticket.alias : '~' + ticket.uname;
-      pilot.append(avatar, name);
-      if (ticket.uname === uname) {
-        const you = document.createElement('small');
-        you.textContent = 'YOU';
-        pilot.append(you);
-      }
-      const staked = document.createElement('span');
-      staked.textContent = amount(ticket.stake);
-      const status = document.createElement('span');
-      status.className = 'crew-state';
-      status.textContent =
-        ticket.status === 'escaped'
-          ? `${multiplierText(ticket.multiplier!)} ESCAPED`
-          : ticket.status === 'lost'
-            ? 'FLIGHT LOST'
-            : view!.phase === 'boarding'
-              ? 'BOARDED'
-              : 'IN FLIGHT';
-      const payout = document.createElement('span');
-      payout.textContent = ticket.payout === null ? '—' : `${amount(ticket.payout)}${ticket.paid ? '' : ' · pending'}`;
-      row.append(pilot, staked, status, payout);
+      const pilot = cell('', 'pilot');
+      pilot.append(cell(ticket.alias ? '@' + ticket.alias : '~' + ticket.uname, 'name'));
+      if (ticket.uname === uname) pilot.append(cell('YOU', 'you'));
+      row.append(
+        pilot,
+        cell(amount(ticket.stake)),
+        cell(
+          ticket.status === 'escaped'
+            ? multiplierText(ticket.multiplier!)
+            : ticket.status === 'lost'
+              ? 'Crashed'
+              : view!.phase === 'boarding'
+                ? 'Aboard'
+                : 'Flying',
+        ),
+        cell(ticket.payout === null ? '—' : `${amount(ticket.payout)}${ticket.paid ? '' : ' · pending'}`),
+      );
       return row;
     }),
   );
@@ -180,7 +179,7 @@ function renderHistory() {
       button.type = 'button';
       button.textContent = multiplierText(flight.point);
       button.dataset.high = String(flight.point >= 200);
-      button.title = `Check flight ${flight.id.slice(0, 8)}`;
+      button.title = `Check flight ${flight.id.slice(0, 8).toUpperCase()}`;
       button.addEventListener('click', () => {
         void showProof(flight.id);
       });
@@ -196,106 +195,109 @@ async function showProof(id: string) {
   $('proof-id').textContent = id;
   $('proof-secret').textContent = 'Loading…';
   $('proof-status').textContent = '';
+  delete $('proof-status').dataset.valid;
   try {
     const proof = await api<FlightProof>(`/flights/${id}`),
       valid = verifyFlight(proof, id);
     $('proof-title').textContent =
-      `${multiplierText(proof.point)} ${proof.point === MAX_MULTIPLIER ? '· orbit reached' : '· flight ended'}`;
+      `${multiplierText(proof.point)} · ${proof.point === MAX_MULTIPLIER ? 'everyone escaped' : 'crash point'}`;
     $('proof-secret').textContent = proof.secret;
     $('proof-status').textContent = valid
-      ? 'Commitment matches. This secret produces this crash point.'
-      : 'The revealed result does not match the commitment.';
+      ? 'Match: this secret gives this flight ID and this crash point.'
+      : 'Mismatch: the revealed secret does not give this flight.';
     $('proof-status').dataset.valid = String(valid);
   } catch (error: any) {
-    $('proof-title').textContent = 'Recorder unavailable';
+    $('proof-title').textContent = 'Check unavailable';
     $('proof-status').textContent = error.message;
   }
 }
 
+/** What joining now wins at the auto escape, before anyone boards. */
+function plan() {
+  if (!auto.checked) return 'Escape by hand in flight';
+  try {
+    const value = HookedIn.parseAmount(stake.value),
+      at = Math.round(Number(target.value) * 100);
+    if (!(at >= 101 && at <= MAX_MULTIPLIER)) return '';
+    return `Profit ${amount(payoutAt(value, at) - BigInt(value))} ${asset} at ${multiplierText(at)}`;
+  } catch {
+    return '';
+  }
+}
+
+/** The escape button follows the rocket: the multiplier, and what escaping now pays. */
+function showEscape(multiplier: number) {
+  $('action-label').textContent = `Escape ${multiplierText(multiplier)}`;
+  $('action-detail').textContent = `${amount(payoutAt(saved!.stake, multiplier))} ${asset}`;
+}
+
 function render() {
   const mine = ownTicket(),
-    flying = view?.phase === 'flying',
     live = fresh(),
     locked = working || Boolean(saved) || practice;
-  $('connection').textContent = live ? `${practice ? 'WATCHING' : asset} · LIVE ROOM` : 'RECONNECTING';
-  $('connection').dataset.live = String(live);
-  $('seat-indicator').textContent =
-    mine?.status === 'escaped'
-      ? 'ESCAPED'
-      : mine?.status === 'lost'
-        ? 'FLIGHT LOST'
-        : mine?.status === 'aboard'
-          ? 'ABOARD'
-          : saved
-            ? 'CONFIRMING'
-            : 'STANDBY';
-  stake.disabled = $<HTMLButtonElement>('bet-up').disabled = $<HTMLButtonElement>('bet-down').disabled = locked;
-  auto.disabled = locked;
+  for (const control of [stake, auto, $<HTMLButtonElement>('half'), $<HTMLButtonElement>('double')])
+    control.disabled = locked;
   target.disabled = locked || !auto.checked;
-  document.querySelectorAll<HTMLButtonElement>('[data-target]').forEach(button => {
-    button.disabled = locked;
-    button.dataset.selected = String(auto.checked && button.dataset.target === target.value);
-  });
-  $('auto-note').textContent = auto.checked
-    ? 'Your target stays active if you disconnect.'
-    : 'Manual flight. Stay connected to escape.';
-  let label = 'Join flight ↗',
-    detail = 'ONE SHARED FLIGHT',
+  const escape = view?.phase === 'flying' && mine?.status === 'aboard' && Boolean(saved?.bet);
+  let label = 'Join flight',
+    detail = plan(),
     disabled = !ready || !live || working || proofFault;
-  const escape = flying && mine?.status === 'aboard' && Boolean(saved?.bet);
-  if (!ready) label = 'Connecting wallet…';
-  else if (practice) {
+  if (!ready) {
+    label = 'Connecting…';
+    detail = '';
+  } else if (practice) {
     label = 'Seats need ETH';
-    detail = 'WATCH THE SHARED FLIGHT';
+    detail = 'Switch to ETH above';
     disabled = true;
-  } else if (working) label = saved?.escapeRequested ? 'Confirming escape…' : 'Confirming seat…';
-  else if (saved && !saved.bet) {
-    label = 'Resume bet request';
-    detail = 'RECOVER YOUR SAVED REQUEST';
+  } else if (working) {
+    label = saved?.escapeRequested ? 'Confirming escape…' : 'Confirming seat…';
+    detail = '';
+  } else if (saved && !saved.bet) {
+    label = 'Resume your bet';
+    detail = 'Your seat request is saved';
   } else if (saved && !mine) {
     label = 'Confirming seat…';
-    detail = 'WAITING FOR FLIGHT CONTROL';
+    detail = 'Waiting for the room';
     disabled = true;
   } else if (escape) {
-    label = 'Escape now';
-    detail = 'LOCK IN YOUR MULTIPLIER';
+    label = detail = '';
   } else if (saved) {
-    label =
-      mine?.status === 'escaped' ? 'Escape accepted ✓' : mine?.status === 'lost' ? 'Flight ended' : 'You’re aboard ✓';
+    label = mine?.status === 'escaped' ? 'Escape accepted ✓' : mine?.status === 'lost' ? 'Crashed' : 'Aboard ✓';
     detail =
-      mine?.payout !== null && mine?.payout !== undefined
-        ? 'WAITING FOR WALLET RECEIPT'
-        : saved.auto !== null
-          ? 'YOUR AUTO ESCAPE IS SET'
-          : 'MANUAL ESCAPE · STAY CONNECTED';
+      mine?.status === 'escaped'
+        ? 'Collecting your payout'
+        : mine?.status === 'lost'
+          ? 'Stake lost'
+          : saved.auto !== null
+            ? `Auto escape at ${multiplierText(saved.auto)}`
+            : 'Escape by hand in flight';
     disabled = true;
   } else if (view?.phase !== 'boarding' || mine) {
     label = mine?.status === 'escaped' ? 'Escaped ✓' : 'Next flight soon';
-    detail = 'WATCH THE SHARED FLIGHT';
+    detail = view?.phase === 'flying' ? 'Watching this flight' : '';
     disabled = true;
   } else if (view.startsAt !== null && view.startsAt - serverNow() < 1_000) {
     label = 'Boarding closed';
-    detail = 'GET READY FOR TAKE-OFF';
+    detail = 'Next flight soon';
     disabled = true;
   } else if (view.tickets.length >= MAX_CREW) {
     label = 'Flight is full';
-    detail = 'NEXT FLIGHT SOON';
+    detail = 'Next flight soon';
     disabled = true;
   }
   if (!live && ready) {
-    label = 'Reconnecting…';
-    detail = 'WAITING FOR FLIGHT CONTROL';
+    label = view ? 'Reconnecting…' : 'Connecting…';
+    detail = view ? 'Waiting for the room' : '';
   }
   action.disabled = disabled;
   action.dataset.escape = String(escape);
-  $('action-label').textContent = label;
-  $('action-detail').textContent = detail;
+  if (label) {
+    $('action-label').textContent = label;
+    $('action-detail').textContent = detail;
+  } else showEscape(multiplierNow());
   bank.setBusy(working);
-  $('session-net').textContent = `${net > 0n ? '+' : ''}${amount(net)} ${asset}`;
-  $('session-net').dataset.positive = String(net > 0n);
-  $('sound').textContent = sound.muted ? 'SOUND OFF' : 'SOUND ON';
-  $('sound').setAttribute('aria-label', sound.muted ? 'Turn sound on' : 'Turn sound off');
-  $('sound').setAttribute('aria-pressed', String(sound.muted));
+  $('mute').textContent = sound.muted ? 'Sound off' : 'Sound on';
+  $('mute').setAttribute('aria-pressed', String(sound.muted));
 }
 
 async function receive(receipt: GameReceipt) {
@@ -323,11 +325,11 @@ async function receive(receipt: GameReceipt) {
   try {
     const current = await api<FlightView>('/flight');
     setView(current);
-    if (proofFault) throw new Error('The flight proof does not match its commitment. Betting is paused.');
+    if (proofFault) throw new Error('This flight’s secret does not match its ID. Betting is paused.');
     let ticket = current.id === pending.flight ? current.tickets.find(t => t.bet === pending.bet) : undefined;
     if (current.id !== pending.flight) {
       const proof = await api<FlightProof>(`/flights/${pending.flight}`);
-      if (!verifyFlight(proof, pending.flight)) throw new Error('The flight proof does not match your bet.');
+      if (!verifyFlight(proof, pending.flight)) throw new Error('Your flight’s secret does not match its ID.');
       ticket = proof.tickets.find(t => t.bet === pending.bet);
     }
     if (ticket?.payout === null) throw new Error('The wallet has a payment. Waiting for the flight’s result.');
@@ -341,16 +343,15 @@ async function receive(receipt: GameReceipt) {
       proofFault = true;
       throw new Error(`The wallet received ${amount(paid)} ${asset}; this flight owes ${amount(expected)} ${asset}.`);
     }
-    net += paid - BigInt(pending.stake);
     saved = null;
     persist();
-    if (!ticket) message(`Your seat was not accepted. ${amount(paid)} ${asset} returned.`);
+    if (!ticket) message(`Your seat was not accepted. ${amount(paid)} ${asset} refunded.`);
     else if (ticket.status === 'escaped') {
-      message(`Escaped at ${multiplierText(ticket.multiplier!)}. ${amount(paid)} ${asset} received in your wallet.`);
-      toast(`ESCAPED ${multiplierText(ticket.multiplier!)} · ${amount(paid)} ${asset} returned`);
+      message(`Escaped at ${multiplierText(ticket.multiplier!)}. ${amount(paid)} ${asset} is in your balance.`);
+      toast(`Escaped at ${multiplierText(ticket.multiplier!)} · +${amount(paid - BigInt(pending.stake))} ${asset}`);
       sky.celebrate();
       sound.melody([440, 554, 659, 880], 0.08, { gain: 0.055 });
-    } else message(`Flight ended. Your ${amount(pending.stake)} ${asset} stake was lost.`);
+    } else message(`The rocket crashed before you escaped. ${amount(pending.stake)} ${asset} lost.`);
   } catch (error: any) {
     message(error.message, true);
   } finally {
@@ -372,9 +373,11 @@ async function ask() {
   if (saved?.id === pending.id && saved.bet) {
     setView(await api<FlightView>('/placed', {}));
     message(
-      ownTicket()
-        ? 'Your seat is in. Escape before the rocket burns out.'
-        : 'Checking admission. Any unaccepted stake is returned.',
+      !ownTicket()
+        ? 'Checking your seat. A seat the room does not accept is refunded.'
+        : pending.auto !== null
+          ? `You’re aboard. Auto escape at ${multiplierText(pending.auto)} holds even if you close the page.`
+          : 'You’re aboard. Press Escape before the crash.',
     );
   }
 }
@@ -430,8 +433,8 @@ async function escape() {
     view.tickets = view.tickets.map(t => (t.bet === ticket.bet ? ticket : t));
     renderCrew();
   }
-  message(`Escape accepted at ${multiplierText(ticket.multiplier!)}. Waiting for your wallet’s receipt.`);
-  toast(`ESCAPE ACCEPTED · ${multiplierText(ticket.multiplier!)}`);
+  message(`Escape accepted at ${multiplierText(ticket.multiplier!)}. Your wallet is collecting the payout.`);
+  toast(`Escape accepted at ${multiplierText(ticket.multiplier!)}`);
 }
 
 async function act(work: () => Promise<void>) {
@@ -474,54 +477,50 @@ function animate(time: number) {
     lastRender = time;
   }
   const phase = view?.phase ?? 'boarding',
-    now = serverNow();
-  const multiplier = phase === 'flying' ? multiplierAt(now - view!.startsAt!) : phase === 'ended' ? view!.point! : 100;
-  $('stage').dataset.phase = phase;
-  $('flight-id').textContent = `FLIGHT ${view?.id.slice(0, 8).toUpperCase() ?? '—'}`;
-  $('multiplier').innerHTML = `${(multiplier / 100).toFixed(2)}<span>×</span>`;
-  let title = 'LAUNCH PAD',
-    label = 'READY WHEN YOU ARE',
-    caption = 'Find your seat. The sky is shared.';
+    now = serverNow(),
+    multiplier = multiplierNow(),
+    mine = ownTicket(),
+    orbit = phase === 'ended' && multiplier === MAX_MULTIPLIER;
+  let title = phase === 'flying' ? 'In flight' : phase === 'ended' ? (orbit ? 'Orbit' : 'Crashed') : 'Boarding',
+    caption = '',
+    tone = '',
+    left = 0;
   if (phase === 'boarding' && view?.startsAt) {
     const seconds = Math.max(0, Math.ceil((view.startsAt - now) / 1000));
-    label = 'PREPARE FOR TAKE-OFF';
-    caption = `Boarding closes in ${seconds}s. Crew, get ready.`;
-    title = `BOARDING · ${seconds}s`;
-    $('boarding-progress').style.transform = `scaleX(${Math.max(0, (view.startsAt - now) / BOARDING_MS)})`;
-    $('boarding-progress').style.width = '100%';
+    caption = `Take-off in ${seconds}s`;
+    left = Math.max(0, (view.startsAt - now) / BOARDING_MS);
     if (seconds !== lastTick && seconds > 0 && seconds <= 3) {
       lastTick = seconds;
       sound.tone(440, 0, 0.08, { gain: 0.03 });
     }
-  } else {
-    $('boarding-progress').style.width = '0';
+  } else if (phase === 'boarding') caption = 'The first seat starts the countdown';
+  else if (mine?.status === 'escaped') {
+    caption = `You escaped at ${multiplierText(mine.multiplier!)}`;
+    tone = 'win';
+  } else if (phase === 'flying' && mine)
+    caption = mine.auto === null ? 'Escape before the crash' : `Auto escape at ${multiplierText(mine.auto)}`;
+  else if (orbit) caption = 'Everyone aboard escaped';
+  else if (phase === 'ended' && mine) {
+    caption = 'You didn’t escape';
+    tone = 'loss';
+  } else if (phase === 'ended') caption = 'Next flight soon';
+  if (!fresh()) {
+    title = view ? 'Reconnecting' : 'Connecting';
+    caption = view ? 'Reconnecting to the room…' : '';
+    tone = '';
   }
-  if (phase === 'flying') {
-    title = 'IN FLIGHT';
-    label = multiplier >= 500 ? 'INTO THE STRATOSPHERE' : 'THRUST IS BUILDING';
-    caption = 'Your exit. Your call.';
-  }
-  if (phase === 'ended') {
-    title = view?.point === MAX_MULTIPLIER ? 'ORBIT REACHED' : 'FLIGHT ENDED';
-    label = view?.point === MAX_MULTIPLIER ? 'EVERYONE ABOARD ESCAPED' : 'CRASH POINT';
-    caption = 'Flight recorded. Check the result below.';
-  }
-  if (!fresh() && ready) {
-    title = 'SIGNAL INTERRUPTED';
-    caption = 'Reconnecting to flight control…';
-  }
+  stage.dataset.phase = fresh() ? (orbit ? 'orbit' : phase) : 'stale';
   $('phase').textContent = title;
-  $('readout-label').textContent = label;
-  $('flight-caption').textContent = caption;
-  $('stage-note').textContent =
-    phase === 'flying'
-      ? 'Cash-outs use the server’s multiplier.'
-      : phase === 'ended'
-        ? 'Select a result in the flight recorder to verify.'
-        : '8 seconds to board · escape up to 100×';
-  if (action.dataset.escape === 'true' && !working && fresh())
-    $('action-label').textContent = `Escape ${multiplierText(multiplier)}`;
-  if (time > toastUntil) $('escape-toast').hidden = true;
+  $('caption').textContent = caption;
+  $('caption').dataset.tone = tone;
+  $('countdown').style.transform = `scaleX(${left})`;
+  const shown = (multiplier / 100).toFixed(2);
+  if (shown !== shownMultiplier) {
+    $('multiplier').innerHTML = `${shown}<span>×</span>`;
+    shownMultiplier = shown;
+  }
+  if (action.dataset.escape === 'true' && saved && !working && fresh()) showEscape(multiplier);
+  if (time > toastUntil) toastBox.hidden = true;
   sky.draw(view, multiplier, time);
   requestAnimationFrame(animate);
 }
@@ -553,8 +552,8 @@ async function start() {
     } else
       message(
         practice
-          ? 'The rocket flies with ETH. Watch the shared flight here, and set up your wallet with ETH to take a seat.'
-          : 'Choose your stake and an exit plan. Everyone shares the flight.',
+          ? 'Seats are ETH only. Watch the flight here, or switch to ETH above to board.'
+          : 'Everyone rides the same rocket. Join, then escape before it crashes.',
       );
   } catch (error: any) {
     message(error.message, true);
@@ -563,26 +562,27 @@ async function start() {
   void watch();
 }
 
+/** Halve or double the stake exactly, down to one unit; an unreadable stake is left for the player to fix. */
+function scaleStake(up: boolean) {
+  try {
+    const units = BigInt(HookedIn.parseAmount(stake.value));
+    stake.value = HookedIn.exactAmount(up ? units * 2n : units / 2n || 1n);
+  } catch {}
+  render();
+}
+
 action.addEventListener('click', () => {
   void act(saved ? (saved.bet ? escape : ask) : join);
 });
-$('bet-up').addEventListener('click', () => HookedIn.stepStake(stake, true));
-$('bet-down').addEventListener('click', () => HookedIn.stepStake(stake, false));
-$('sound').addEventListener('click', () => {
+$('half').addEventListener('click', () => scaleStake(false));
+$('double').addEventListener('click', () => scaleStake(true));
+$('mute').addEventListener('click', () => {
   sound.unlock();
   sound.setMuted(!sound.muted);
   render();
 });
 $('close-proof').addEventListener('click', () => $<HTMLDialogElement>('proof-dialog').close());
-auto.addEventListener('change', render);
-target.addEventListener('input', render);
-document.querySelectorAll<HTMLButtonElement>('[data-target]').forEach(button =>
-  button.addEventListener('click', () => {
-    target.value = button.dataset.target!;
-    auto.checked = true;
-    render();
-  }),
-);
+for (const input of [stake, target, auto]) input.addEventListener('input', render);
 document.addEventListener('keydown', event => {
   if (
     event.code !== 'Space' ||

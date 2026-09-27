@@ -112,11 +112,12 @@ export function createSky(canvas: HTMLCanvasElement, reduced: boolean) {
       if (phase === 'ended' && lastPhase !== phase) endedAt = time;
       lastPhase = phase;
       c.clearRect(0, 0, width, height);
-      const progress = Math.max(0, Math.min(1, Math.log(multiplier / 100) / Math.log(100)));
+      const progress = Math.max(0, Math.min(1, Math.log(multiplier / 100) / Math.log(100))),
+        ground = height - 30;
       // A quiet coordinate grid and a planet below the launch pad.
       c.strokeStyle = '#30364355';
       c.lineWidth = 1;
-      for (let y = 75; y < height - 40; y += 55) {
+      for (let y = 50; y < ground + 14; y += 50) {
         c.beginPath();
         c.moveTo(22, y);
         c.lineTo(width - 22, y);
@@ -124,14 +125,14 @@ export function createSky(canvas: HTMLCanvasElement, reduced: boolean) {
       }
       for (let x = 30; x < width; x += 70) {
         c.beginPath();
-        c.moveTo(x, 62);
-        c.lineTo(x, height - 41);
+        c.moveTo(x, 44);
+        c.lineTo(x, ground + 14);
         c.stroke();
       }
       for (const star of stars) {
         const drift = !reduced && phase === 'flying' ? (time / 35) % width : 0;
         const x = (star.x * width - drift + width) % width,
-          y = 54 + star.y * (height - 110);
+          y = 40 + star.y * (ground - 40);
         c.fillStyle = star.size > 1 ? '#c6b49b77' : '#7887a55c';
         c.fillRect(x, y, star.size, star.size);
       }
@@ -150,18 +151,18 @@ export function createSky(canvas: HTMLCanvasElement, reduced: boolean) {
       const cx = width * 0.42,
         cy = height * 0.88;
       c.beginPath();
-      c.moveTo(25, height - 57);
-      c.bezierCurveTo(width * 0.25, height - 57, cx, cy, x, y);
+      c.moveTo(25, ground);
+      c.bezierCurveTo(width * 0.25, ground, cx, cy, x, y);
       c.strokeStyle = phase === 'ended' ? '#a95b445c' : '#ff8757';
       c.lineWidth = 2;
       c.shadowColor = '#ff7d43';
       c.shadowBlur = phase === 'flying' ? 14 : 0;
       c.stroke();
       c.shadowBlur = 0;
-      c.lineTo(x, height - 57);
-      c.lineTo(25, height - 57);
+      c.lineTo(x, ground);
+      c.lineTo(25, ground);
       c.closePath();
-      const fill = c.createLinearGradient(0, y, 0, height - 50);
+      const fill = c.createLinearGradient(0, y, 0, ground);
       fill.addColorStop(0, '#ff7d431b');
       fill.addColorStop(1, '#ff7d4300');
       c.fillStyle = fill;

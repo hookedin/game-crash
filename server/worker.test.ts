@@ -91,12 +91,12 @@ test('startup recovers when the casino returns, and malformed or unauthenticated
   await Promise.all(x.background);
 });
 
-test('an idle room lets its alarm lapse, and an alarm that cannot open the room tries again', async t => {
+test('a room with nobody aboard lets its alarm lapse, and an alarm that cannot open the room tries again', async t => {
   const x = fixture(t);
   assert.equal((await x.get()).status, 200);
   await Promise.all(x.background);
   await x.room.alarm();
-  assert.deepEqual(x.alarms, [], 'nothing is under way, so nothing is scheduled');
+  assert.deepEqual(x.alarms, [], 'the room has no work, so nothing is scheduled');
   x.reachable(false);
   x.restart();
   await x.room.alarm();

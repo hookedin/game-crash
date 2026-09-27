@@ -12,7 +12,7 @@ import {
   payoutAt,
   verifyFlight,
 } from './rules.ts';
-import type { FlightProof, FlightView, PublicTicket } from './rules.ts';
+import type { FlightProof, FlightSummary, FlightView, PublicTicket } from './rules.ts';
 import { createSky } from './sky.ts';
 
 interface Saved {
@@ -75,7 +75,8 @@ async function api<T>(path: string, body?: unknown): Promise<T> {
     cache: 'no-store',
   });
   const value = await response.json().catch(() => null);
-  if (!response.ok || !value) throw new Error(value?.error || 'The room is unavailable.');
+  if (!response.ok || !value)
+    throw Object.assign(new Error(value?.error || 'The room is unavailable.'), { status: response.status });
   return value;
 }
 
@@ -91,7 +92,7 @@ function setView(next: FlightView) {
     toastBox.hidden = true;
   }
   if (next.phase === 'ended' && next.secret) {
-    const valid = verifyFlight({ ...next, secret: next.secret, point: next.point!, startsAt: next.startsAt! }, next.id);
+    const valid = verifyFlight({ id: next.id, secret: next.secret, point: next.point! }, next.id);
     if (!valid) {
       proofFault = true;
       message('This flight’s secret does not match its ID. Betting is paused.', true);
@@ -132,7 +133,7 @@ function renderCrew() {
   $('total-staked').textContent = amount(tickets.reduce((sum, t) => sum + BigInt(t.stake), 0n));
   $('flight-id').textContent = `Flight ${view.id.slice(0, 8).toUpperCase()}`;
   if (!tickets.length) {
-    $('crew').innerHTML = '<p class="empty-crew">No one aboard yet. The first seat starts the countdown.</p>';
+    $('crew').innerHTML = '<p class="empty-crew">No one aboard this flight.</p>';
     return;
   }
   const cell = (text: string, className = '') => {
@@ -180,36 +181,25 @@ function renderHistory() {
       button.textContent = multiplierText(flight.point);
       button.dataset.high = String(flight.point >= 200);
       button.title = `Check flight ${flight.id.slice(0, 8).toUpperCase()}`;
-      button.addEventListener('click', () => {
-        void showProof(flight.id);
-      });
+      button.addEventListener('click', () => showProof(flight));
       return button;
     }),
   );
 }
 
-async function showProof(id: string) {
-  const dialog = $<HTMLDialogElement>('proof-dialog');
+/** A recent flight, checked here from its revealed secret. */
+function showProof(flight: FlightSummary) {
+  const dialog = $<HTMLDialogElement>('proof-dialog'),
+    valid = verifyFlight(flight, flight.id);
+  $('proof-title').textContent =
+    `${multiplierText(flight.point)} · ${flight.point === MAX_MULTIPLIER ? 'everyone escaped' : 'crash point'}`;
+  $('proof-id').textContent = flight.id;
+  $('proof-secret').textContent = flight.secret;
+  $('proof-status').textContent = valid
+    ? 'Match: this secret gives this flight ID and this crash point.'
+    : 'Mismatch: the revealed secret does not give this flight.';
+  $('proof-status').dataset.valid = String(valid);
   if (!dialog.open) dialog.showModal();
-  $('proof-title').textContent = 'Checking flight…';
-  $('proof-id').textContent = id;
-  $('proof-secret').textContent = 'Loading…';
-  $('proof-status').textContent = '';
-  delete $('proof-status').dataset.valid;
-  try {
-    const proof = await api<FlightProof>(`/flights/${id}`),
-      valid = verifyFlight(proof, id);
-    $('proof-title').textContent =
-      `${multiplierText(proof.point)} · ${proof.point === MAX_MULTIPLIER ? 'everyone escaped' : 'crash point'}`;
-    $('proof-secret').textContent = proof.secret;
-    $('proof-status').textContent = valid
-      ? 'Match: this secret gives this flight ID and this crash point.'
-      : 'Mismatch: the revealed secret does not give this flight.';
-    $('proof-status').dataset.valid = String(valid);
-  } catch (error: any) {
-    $('proof-title').textContent = 'Check unavailable';
-    $('proof-status').textContent = error.message;
-  }
 }
 
 /** What joining now wins at the auto escape, before anyone boards. */
@@ -276,7 +266,7 @@ function render() {
     label = mine?.status === 'escaped' ? 'Escaped ✓' : 'Next flight soon';
     detail = view?.phase === 'flying' ? 'Watching this flight' : '';
     disabled = true;
-  } else if (view.startsAt !== null && view.startsAt - serverNow() < 1_000) {
+  } else if (view.startsAt - serverNow() < 1_000) {
     label = 'Boarding closed';
     detail = 'Next flight soon';
     disabled = true;
@@ -328,9 +318,13 @@ async function receive(receipt: GameReceipt) {
     if (proofFault) throw new Error('This flight’s secret does not match its ID. Betting is paused.');
     let ticket = current.id === pending.flight ? current.tickets.find(t => t.bet === pending.bet) : undefined;
     if (current.id !== pending.flight) {
-      const proof = await api<FlightProof>(`/flights/${pending.flight}`);
-      if (!verifyFlight(proof, pending.flight)) throw new Error('Your flight’s secret does not match its ID.');
-      ticket = proof.tickets.find(t => t.bet === pending.bet);
+      // The room keeps the flights somebody was aboard: one it does not keep never seated this bet.
+      const proof = await api<FlightProof>(`/flights/${pending.flight}`).catch(error => {
+        if (error.status === 404) return null;
+        throw error;
+      });
+      if (proof && !verifyFlight(proof, pending.flight)) throw new Error('Your flight’s secret does not match its ID.');
+      ticket = proof?.tickets.find(t => t.bet === pending.bet);
     }
     if (ticket?.payout === null) throw new Error('The wallet has a payment. Waiting for the flight’s result.');
     const expected = ticket
@@ -403,7 +397,7 @@ async function join() {
   }
   // A funding dialog can outlast boarding. Read the room again before saving or signing anything.
   setView(await api<FlightView>('/flight'));
-  if (view.phase !== 'boarding' || (view.startsAt !== null && view.startsAt - serverNow() < 1_000))
+  if (view.phase !== 'boarding' || view.startsAt - serverNow() < 1_000)
     throw new Error('Boarding closed while your wallet was open. Join the next flight.');
   saved = {
     id: crypto.randomUUID(),
@@ -485,7 +479,7 @@ function animate(time: number) {
     caption = '',
     tone = '',
     left = 0;
-  if (phase === 'boarding' && view?.startsAt) {
+  if (phase === 'boarding' && view) {
     const seconds = Math.max(0, Math.ceil((view.startsAt - now) / 1000));
     caption = `Take-off in ${seconds}s`;
     left = Math.max(0, (view.startsAt - now) / BOARDING_MS);
@@ -493,8 +487,7 @@ function animate(time: number) {
       lastTick = seconds;
       sound.tone(440, 0, 0.08, { gain: 0.03 });
     }
-  } else if (phase === 'boarding') caption = 'The first seat starts the countdown';
-  else if (mine?.status === 'escaped') {
+  } else if (mine?.status === 'escaped') {
     caption = `You escaped at ${multiplierText(mine.multiplier!)}`;
     tone = 'win';
   } else if (phase === 'flying' && mine)

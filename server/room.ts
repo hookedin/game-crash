@@ -23,7 +23,7 @@ interface Flight {
   id: string;
   secret: string;
   phase: FlightView['phase'];
-  startsAt: number | null;
+  startsAt: number;
   tickets: Ticket[];
 }
 interface Payment {
@@ -55,8 +55,8 @@ export class GameError extends Error {
 }
 
 const publicTicket = ({ escapeHash: _, ...ticket }: Ticket): PublicTicket => ticket;
-/** A flight that has started boarding, or payments still owed: the room has work of its own to do. */
-const underWay = ({ flight, outbox }: RoomState) => (flight !== null && flight.startsAt !== null) || outbox.length > 0;
+/** Somebody aboard, or payments still owed: the room has work of its own to do. */
+const underWay = ({ flight, outbox }: RoomState) => Boolean(flight?.tickets.length) || outbox.length > 0;
 const payment = (ticket: Ticket): Payment => ({
   bet: ticket.bet,
   player: ticket.payout!,
@@ -82,12 +82,12 @@ export class Room {
     const next = this.queue.then(async () => {
       const draft = structuredClone(this.state),
         now = this.deps.now();
-      // While a flight is under way, the alarm is durable even if saving a decision or answering the request fails.
+      // While the room has work, the alarm is durable even if saving a decision or answering the request fails.
       if (underWay(this.state)) await this.deps.wake(now + 1_000);
       await this.advance(draft, now);
       const result = await work(draft, now);
       if (JSON.stringify(draft) !== JSON.stringify(this.state)) await this.deps.save(draft);
-      // The first accepted bet starts boarding, and the alarm with it.
+      // The first accepted seat starts the alarm.
       if (!underWay(this.state) && underWay(draft)) await this.deps.wake(now + 1_000);
       this.state = draft;
       return result;
@@ -96,9 +96,10 @@ export class Room {
     return next;
   }
 
-  private newFlight(): Flight {
+  /** A flight boards for `BOARDING_MS` and takes off, whether or not anybody boards it. */
+  private newFlight(now: number): Flight {
     const secret = this.deps.secret();
-    return { id: commitment(secret), secret, phase: 'boarding', startsAt: null, tickets: [] };
+    return { id: commitment(secret), secret, phase: 'boarding', startsAt: now + BOARDING_MS, tickets: [] };
   }
 
   private proof(flight: Flight): FlightProof {
@@ -106,7 +107,7 @@ export class Room {
       id: flight.id,
       secret: flight.secret,
       point: crashPoint(flight.secret),
-      startsAt: flight.startsAt!,
+      startsAt: flight.startsAt,
       tickets: flight.tickets.map(publicTicket),
     };
   }
@@ -117,9 +118,11 @@ export class Room {
     ticket.payout = String(payoutAt(ticket.stake, multiplier));
   }
 
+  /** Flights fly on the clock. Nothing wakes the room for one nobody boarded: whoever looks next finds it where the
+   * clock has it, or the next one boarding. */
   private async advance(draft: RoomState, now: number) {
-    const flight = (draft.flight ??= this.newFlight());
-    if (flight.startsAt === null || now < flight.startsAt) return;
+    const flight = (draft.flight ??= this.newFlight(now));
+    if (now < flight.startsAt) return;
     const point = crashPoint(flight.secret),
       end = flight.startsAt + timeTo(point);
     flight.phase = now < end ? 'flying' : 'ended';
@@ -140,21 +143,22 @@ export class Room {
         }
       }
     }
-    // Keep the result visible, and finish every payment before accepting bets on another flight.
+    // Keep the result visible, and finish every payment before accepting bets on another flight. A flight with a
+    // crew is kept for its players to check; any flight can be checked from the history, which carries its secret.
     if (
       flight.phase === 'ended' &&
       now >= end + COOLDOWN_MS &&
       flight.tickets.every(t => t.paid) &&
       !draft.outbox.length
     ) {
-      await this.deps.keep(this.proof(flight));
-      draft.history = [{ id: flight.id, point }, ...draft.history].slice(0, 12);
-      draft.flight = this.newFlight();
+      if (flight.tickets.length) await this.deps.keep(this.proof(flight));
+      draft.history = [{ id: flight.id, point, secret: flight.secret }, ...draft.history].slice(0, 12);
+      draft.flight = this.newFlight(now);
     }
   }
 
-  /** Whether a flight has started boarding or a payment is still owed. An idle room needs no alarm: the next page to
-   * open it, or the bet a page reports, wakes it. */
+  /** Whether somebody is aboard or a payment is still owed. Otherwise the room needs no alarm: the next page to open
+   * it, or the bet a page reports, wakes it. */
   underWay() {
     return underWay(this.state);
   }
@@ -177,7 +181,7 @@ export class Room {
         secret: ended ? flight.secret : null,
         tickets: flight.tickets.map(publicTicket),
         history: ended
-          ? [{ id: flight.id, point: crashPoint(flight.secret) }, ...draft.history].slice(0, 12)
+          ? [{ id: flight.id, point: crashPoint(flight.secret), secret: flight.secret }, ...draft.history].slice(0, 12)
           : draft.history,
       };
     });
@@ -235,7 +239,7 @@ export class Room {
         after = page.cursor;
       }
       bets.sort((a, b) => a.placedAt - b.placedAt || a.bet.localeCompare(b.bet));
-      await this.edit(async (draft, now) => {
+      await this.edit(async draft => {
         const flight = draft.flight!;
         for (const bet of bets) {
           if (flight.tickets.some(t => t.bet === bet.bet) || draft.outbox.some(t => t.bet === bet.bet)) continue;
@@ -260,7 +264,6 @@ export class Room {
               payout: null,
               paid: false,
             });
-            flight.startsAt ??= now + BOARDING_MS;
           } else {
             // A stored flight fixes what a retry is paid. Bets outside its accepted crew get their stakes back.
             const proof = bet.group ? await this.deps.kept(bet.group) : undefined;

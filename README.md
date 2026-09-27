@@ -24,12 +24,14 @@ The preview harness is in `test/` and is not part of the Worker or its built ass
 ## Play
 
 - Choose a stake and optionally an auto-escape target from 1.01× to 100×.
-- Join a flight. The first accepted bet starts eight seconds of boarding. There are 64 seats, one per player.
+- Join a flight while it boards. Flights leave one after another, eight seconds of boarding each, with or without a
+  crew. There are 64 seats, one per player.
 - During flight, press **Escape** or **Space** to receive your stake times the server's multiplier.
 - Auto escape runs on the server, including while the page is closed. Its target must be **strictly below** the crash
   point. A target at the crash point loses. A flight can crash instantly at 1.00×.
 - At 100× everyone still aboard escapes automatically. Amounts round down to whole wei.
-- Select a recent crash point to check its secret against the flight ID published before boarding.
+- Select a recent crash point to check its secret against the flight ID published before boarding. The history
+  carries each secret, so the check runs in the page.
 
 Cash-outs count when the room starts processing them. The animated multiplier is an estimate between server updates;
 network delay matters. An **accepted** escape has been saved by the room. A **received** payout has been verified and
@@ -75,9 +77,10 @@ the player and chain. A lost cash-out reply can be retried against the same save
 Room changes are serialized and persisted before acknowledgement. A failed write cannot leave an acknowledged
 in-memory decision. Casino reads and settlements run outside that queue, so a slow casino request does not block
 cash-outs. The room saves payouts before settling them; retries send identical amounts. Alarms resolve auto targets
-at their scheduled multiplier even when they wake after the crash. The room keeps its alarm only while a flight is
-under way or a payment is owed; an idle room sleeps until the next page or bet wakes it. The next flight waits until all payouts have been
-settled. Completed proofs remain at `/api/flights/<id>`.
+at their scheduled multiplier even when they wake after the crash. Flights fly on the clock: a flight nobody boarded
+costs nothing, and whoever looks next finds the room where the clock has it. The room keeps its alarm only while
+somebody is aboard or a payment is owed. The next flight waits until all payouts have been settled. Flights that had a
+crew remain at `/api/flights/<id>`.
 
 Pages poll the room every 500 ms and animate locally. The room refreshes open casino bets at most once per second,
 with an immediate refresh after a bet or cash-out. A page whose room snapshot is stale pauses its controls. Only actual

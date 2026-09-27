@@ -1,20 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { keccak256 } from 'ethers';
-import { BOARDING_MS, COOLDOWN_MS, MAX_CREW, MAX_MULTIPLIER, crashPoint, multiplierAt, timeTo } from '../src/rules.ts';
+import {
+  BOARDING_MS,
+  COOLDOWN_MS,
+  MAX_CREW,
+  MAX_MULTIPLIER,
+  crashPoint,
+  multiplierAt,
+  timeTo,
+  verifyFlight,
+} from '../src/rules.ts';
 import { fixture, TOKEN, SECRET } from './fixture.ts';
 
-test('players share a saved commitment; the first accepted bet starts boarding and no live response exposes the secret', async () => {
+test('players share a saved commitment and one countdown; no live response exposes the secret', async () => {
   const x = fixture(),
     empty = await x.room.view();
-  assert.equal(empty.startsAt, null);
+  assert.equal(empty.startsAt, x.now() + BOARDING_MS, 'boarding counts down with nobody aboard');
   assert.equal(x.saved.flight!.id, empty.id);
   const alice = await x.bet(),
     bob = await x.bet();
   await x.room.sync(true);
   const board = await x.room.view();
   assert.equal(board.id, empty.id);
-  assert.equal(board.startsAt, x.now() + BOARDING_MS);
+  assert.equal(board.startsAt, empty.startsAt, 'seats do not move it');
   assert.deepEqual(
     board.tickets.map(t => t.bet),
     [alice.bet, bob.bet],
@@ -26,17 +35,40 @@ test('players share a saved commitment; the first accepted bet starts boarding a
   assert.equal(await x.room.kept(board.id), undefined);
 });
 
-test('the room keeps an alarm only while a flight is under way or a payment is owed', async () => {
+test('flights nobody boards fly on the clock without an alarm, and each can be checked from the history', async () => {
+  const x = fixture(),
+    empty = await x.room.view(),
+    end = empty.startsAt + timeTo(crashPoint(SECRET));
+  x.at(end - 1);
+  assert.equal((await x.room.view()).phase, 'flying');
+  x.at(end);
+  const ended = await x.room.view();
+  assert.deepEqual([ended.phase, ended.point, ended.secret], ['ended', crashPoint(SECRET), SECRET]);
+  x.at(end + COOLDOWN_MS);
+  const next = await x.room.view();
+  assert.notEqual(next.id, empty.id);
+  assert.equal(next.startsAt, x.now() + BOARDING_MS, 'the next flight boards at once');
+  assert.deepEqual(next.history, [{ id: empty.id, point: crashPoint(SECRET), secret: SECRET }]);
+  assert.ok(verifyFlight(next.history[0]!, empty.id), 'its secret checks out against its ID');
+  assert.equal(await x.room.kept(empty.id), undefined, 'a flight nobody boarded is not kept');
+  // Nobody looked for an hour: the flight the clock left behind lands in the history, and the next one boards.
+  x.at(next.startsAt + 3_600_000);
+  const later = await x.room.view();
+  assert.deepEqual([later.phase, later.startsAt, later.history[0]!.id], ['boarding', x.now() + BOARDING_MS, next.id]);
+  assert.deepEqual(x.wakes, [], 'and nothing woke the room');
+});
+
+test('the room keeps an alarm only while somebody is aboard or a payment is owed', async () => {
   const x = fixture();
   await x.room.view();
   await x.room.sync(true);
-  assert.deepEqual(x.wakes, [], 'an empty launch pad sets no alarm');
+  assert.deepEqual(x.wakes, [], 'an empty flight sets no alarm');
   await x.bet();
   await x.room.sync(true);
-  assert.ok(x.wakes.length, 'the first accepted bet starts boarding, and the alarm with it');
+  assert.ok(x.wakes.length, 'the first accepted seat starts the alarm');
   const board = await x.room.view();
-  // After the crash and the cooldown, the lost seat is settled and the next flight opens: nothing is under way.
-  x.at(board.startsAt! + timeTo(crashPoint(SECRET)) + COOLDOWN_MS);
+  // After the crash and the cooldown, the lost seat is settled and the next flight opens: nobody is aboard.
+  x.at(board.startsAt + timeTo(crashPoint(SECRET)) + COOLDOWN_MS);
   await x.room.sync(true);
   assert.notEqual((await x.room.view()).id, board.id);
   const lapsed = x.wakes.length;
@@ -51,7 +83,7 @@ test('only the holder of the escape key can cash out, and concurrent retries ret
   await x.room.sync(true);
   const board = await x.room.view();
   await assert.rejects(x.room.cashout(board.id, bet.bet, TOKEN), /Wait for take-off/);
-  x.at(board.startsAt! + 1_500);
+  x.at(board.startsAt + 1_500);
   await assert.rejects(x.room.cashout(board.id, bet.bet, SECRET), /escape key/);
   const results = await Promise.all([
     x.room.cashout(board.id, bet.bet, TOKEN),
@@ -75,7 +107,7 @@ test('auto escapes survive a disconnected page and a restart; a target at the cr
   const tied = await x.bet({ meta: { escapeHash: keccak256(TOKEN), auto: point } });
   await x.room.sync(true);
   const board = await x.room.view();
-  x.at(board.startsAt! + timeTo(point) + 5_000);
+  x.at(board.startsAt + timeTo(point) + 5_000);
   x.restart();
   await x.room.sync(true);
   assert.equal(x.bets.get(auto.bet)!.settlement!.player, '20000');
@@ -88,7 +120,7 @@ test('manual cashout succeeds before the crash deadline and fails at the deadlin
     late = await x.bet();
   await x.room.sync(true);
   const board = await x.room.view(),
-    end = board.startsAt! + timeTo(crashPoint(SECRET));
+    end = board.startsAt + timeTo(crashPoint(SECRET));
   x.at(end - 1);
   const won = await x.room.cashout(board.id, early.bet, TOKEN);
   assert.equal(won.status, 'escaped');
@@ -107,7 +139,7 @@ test('an instant crash offers no escape; at 100× everyone still aboard escapes 
     const x = fixture(secret),
       bet = await x.bet();
     await x.room.sync(true);
-    x.at((await x.room.view()).startsAt! + timeTo(crashPoint(secret!)));
+    x.at((await x.room.view()).startsAt + timeTo(crashPoint(secret!)));
     await x.room.sync(true);
     assert.equal(x.bets.get(bet.bet)!.settlement!.player, expected);
   }
@@ -117,7 +149,7 @@ test('a target at 100× receives the capped payout', async () => {
   const x = fixture('0x' + 'f'.repeat(64));
   const bet = await x.bet({ meta: { escapeHash: keccak256(TOKEN), auto: MAX_MULTIPLIER } });
   await x.room.sync(true);
-  x.at((await x.room.view()).startsAt! + timeTo(MAX_MULTIPLIER));
+  x.at((await x.room.view()).startsAt + timeTo(MAX_MULTIPLIER));
   await x.room.sync(true);
   assert.equal(x.bets.get(bet.bet)!.settlement!.player, '1000000');
 });
@@ -135,7 +167,7 @@ test('duplicates, malformed terms and late bets are returned without commission'
   );
   for (const bet of [duplicate, malformed])
     assert.deepEqual(x.bets.get(bet.bet)!.settlement, { player: bet.stake, casino: '0', signature: 'signature' });
-  x.at(board.startsAt!);
+  x.at(board.startsAt);
   const late = await x.bet();
   await x.room.sync(true);
   assert.equal(x.bets.get(late.bet)!.settlement!.player, late.stake);
@@ -169,7 +201,7 @@ test('an acknowledged escape survives a lost settlement reply and eviction witho
     bet = await x.bet();
   await x.room.sync(true);
   const board = await x.room.view();
-  x.at(board.startsAt! + 1_000);
+  x.at(board.startsAt + 1_000);
   const escape = await x.room.cashout(board.id, bet.bet, TOKEN);
   x.loseReply(true);
   await assert.rejects(x.room.sync(true), /reply lost/);
@@ -197,12 +229,12 @@ test('a failed durable write cannot acknowledge an escape or change its in-memor
     bet = await x.bet();
   await x.room.sync(true);
   const board = await x.room.view();
-  x.at(board.startsAt! + 1_000);
+  x.at(board.startsAt + 1_000);
   x.failSave(true);
   await assert.rejects(x.room.cashout(board.id, bet.bet, TOKEN), /Storage unavailable/);
   assert.equal(x.saved.flight!.tickets[0]!.status, 'aboard');
   x.failSave(false);
-  x.at(board.startsAt! + 2_000);
+  x.at(board.startsAt + 2_000);
   const escape = await x.room.cashout(board.id, bet.bet, TOKEN);
   assert.equal(escape.multiplier, multiplierAt(2_000));
 });
@@ -213,7 +245,7 @@ test('a slow casino settlement never holds the queue that accepts another player
     b = await x.bet();
   await x.room.sync(true);
   const board = await x.room.view();
-  x.at(board.startsAt! + 1_000);
+  x.at(board.startsAt + 1_000);
   await x.room.cashout(board.id, a.bet, TOKEN);
   let release!: () => void;
   x.pauseSettlement(
@@ -236,7 +268,7 @@ test('the result stays visible until paid, then a new commitment opens and the p
     bet = await x.bet();
   await x.room.sync(true);
   const board = await x.room.view();
-  x.at(board.startsAt! + timeTo(crashPoint(SECRET)) + COOLDOWN_MS);
+  x.at(board.startsAt + timeTo(crashPoint(SECRET)) + COOLDOWN_MS);
   const ended = await x.room.view();
   assert.equal(ended.phase, 'ended');
   assert.equal(ended.secret, SECRET);

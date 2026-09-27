@@ -65,15 +65,17 @@ export interface PublicTicket {
   paid: boolean;
 }
 
+/** A flight in the recent history: its secret shows anyone that the ID committed to this crash point. */
 export interface FlightSummary {
   id: string;
   point: number;
+  secret: string;
 }
 
 export interface FlightView {
   id: string;
   phase: 'boarding' | 'flying' | 'ended';
-  startsAt: number | null;
+  startsAt: number;
   now: number;
   multiplier: number;
   point: number | null;
@@ -82,19 +84,17 @@ export interface FlightView {
   history: FlightSummary[];
 }
 
-export interface FlightProof {
-  id: string;
-  secret: string;
-  point: number;
+/** A flight that had a crew, as the room keeps it: when it took off, and who was aboard. */
+export interface FlightProof extends FlightSummary {
   startsAt: number;
   tickets: PublicTicket[];
 }
 
-export function verifyFlight(proof: FlightProof, expectedId: string) {
+export function verifyFlight(flight: FlightSummary, expectedId: string) {
   return (
-    isSecret(proof.secret) &&
-    proof.id === expectedId &&
-    commitment(proof.secret) === expectedId &&
-    crashPoint(proof.secret) === proof.point
+    isSecret(flight.secret) &&
+    flight.id === expectedId &&
+    commitment(flight.secret) === expectedId &&
+    crashPoint(flight.secret) === flight.point
   );
 }

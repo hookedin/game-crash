@@ -13,7 +13,8 @@ interface Env {
 const json = (value: unknown, status = 200) =>
   Response.json(value, { status, headers: { 'Cache-Control': 'no-store' } });
 
-/** One durable room, shared by every player and driven by alarms even when every page disconnects. */
+/** One durable room, shared by every player. Its flights fly on the clock, and while somebody is aboard or owed, alarms
+ * drive it even when every page disconnects. */
 export class CrashRoom implements DurableObject {
   private room: Promise<Room> | null = null;
   readonly ctx: DurableObjectState;
@@ -83,7 +84,7 @@ export class CrashRoom implements DurableObject {
       const match = /^\/api\/flights\/([0-9a-f]{64})$/.exec(url.pathname);
       if (match && request.method === 'GET') {
         const proof = await room.kept(match[1]!);
-        return proof ? json(proof) : json({ error: 'The flight has not revealed its secret.' }, 404);
+        return proof ? json(proof) : json({ error: 'This flight is not over, or had nobody aboard.' }, 404);
       }
       return json({ error: 'Not found.' }, 404);
     } catch (error: any) {
@@ -94,7 +95,7 @@ export class CrashRoom implements DurableObject {
     }
   }
 
-  /** The room sets its alarm while a flight is under way, and lets it lapse once everything is paid. */
+  /** The room sets its alarm while somebody is aboard or owed, and lets it lapse once everything is paid. */
   async alarm() {
     let room: Room | undefined;
     try {
@@ -103,7 +104,7 @@ export class CrashRoom implements DurableObject {
       await room.sync(true);
     } catch (error: any) {
       console.error('Flight alarm:', error.message);
-      // A room that cannot start, or that has a flight under way, tries again shortly.
+      // A room that cannot start, or that has work, tries again shortly.
       if (!room || room.underWay()) await this.ctx.storage.setAlarm(Date.now() + 1_000);
     }
   }

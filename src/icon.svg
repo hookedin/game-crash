@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="0.6" y2="1"><stop offset="0" stop-color="#3a1a12"/><stop offset="1" stop-color="#0d0b12"/></linearGradient>
+<radialGradient id="glow" cx="0.5" cy="0.42" r="0.62"><stop offset="0" stop-color="#ff7a3d" stop-opacity="0.55"/><stop offset="1" stop-color="#ff7a3d" stop-opacity="0"/></radialGradient>
+<filter id="lift" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="16" stdDeviation="14" flood-color="#000" flood-opacity="0.45"/></filter>
+<linearGradient id="hull" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#c9c3b6"/></linearGradient>
+<linearGradient id="flame" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff3b0"/><stop offset="0.45" stop-color="#ffb13b"/><stop offset="1" stop-color="#ff6b35" stop-opacity="0"/></linearGradient>
+</defs>
+<rect width="512" height="512" fill="url(#bg)"/>
+<rect width="512" height="512" fill="url(#glow)"/>
+
+<path d="M56 456 C196 446 286 386 330 262" fill="none" stroke="#ff6b35" stroke-width="30" stroke-linecap="round" opacity="0.25"/>
+<path d="M56 456 C196 446 286 386 330 262" fill="none" stroke="#ff6b35" stroke-width="14" stroke-linecap="round"/>
+<g filter="url(#lift)" transform="translate(356 196) rotate(34) scale(1.3)">
+<path d="M-17,44 C-15,78 -6,98 0,118 C6,98 15,78 17,44 Z" fill="url(#flame)"/>
+<path d="M-36,4 L-66,58 L-34,48 Z M36,4 L66,58 L34,48 Z" fill="#ff6b35"/>
+<path d="M0,-104 C36,-72 44,-22 38,48 L-38,48 C-44,-22 -36,-72 0,-104 Z" fill="url(#hull)"/>
+<path d="M0,-104 C20,-88 30,-68 34,-50 L-34,-50 C-30,-68 -20,-88 0,-104 Z" fill="#ff6b35"/>
+<circle cx="0" cy="-8" r="19" fill="#2dd4bf" stroke="#1f2430" stroke-width="7"/>
+<rect x="-24" y="44" width="48" height="12" rx="4" fill="#3b3f4a"/>
+</g>
+</svg>

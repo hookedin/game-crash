@@ -64,6 +64,7 @@ controls timing and payment. The wallet checks each signed settlement; it does n
 | `server/worker.ts` | HTTP routes, the room's Durable Object, durable storage and alarms                    |
 | `src/game.ts`      | Wallet requests and recovery, live crew, controls, receipt checks and flight recorder |
 | `src/sky.ts`       | Rocket, curve and particles; presentation only                                        |
+| `src/icon.svg`     | The icon the wallet shows the game by: a square SVG of one symbol                     |
 | `test/`            | Rules, recovery, SDK wallet integration, two-browser test and local preview           |
 
 The page saves the operation ID, stake, flight, auto target and a random escape key before asking the wallet to sign.
@@ -84,12 +85,12 @@ and ETH rooms are separate. Only actual accepted bets appear in the crew; there 
 
 ## Run against HookedIn
 
-Publish a game named `crash` from its developer account on the wallet's **My games** page, using this Worker's manifest
-URL. Set `src/manifest.json` to that account's address. A developer bet needs a published game; loading a bare custom
-manifest does not publish it.
+Publish the game as `crash`, with this Worker's URL, on **My games** in the wallet of the account whose key the Worker
+holds as `DEVELOPER_KEY`: publishing makes that account the game's developer. A developer bet needs a published game;
+opening the game by its URL alone does not publish it.
 
 For local Worker development, put `DEVELOPER_KEY` in `.dev.vars`, point `CASINO_URL` in `wrangler.jsonc` at the chosen
-casino and run `npm run dev`. The page is served at `http://127.0.0.1:8791`. Publish that manifest from the matching
+casino and run `npm run dev`. The page is served at `http://127.0.0.1:8791/`. Publish that URL from the matching
 developer account in the chosen wallet and open the published game there. The Worker needs the key of the account
 that published it, and holds that account's bank and game authority.
 
@@ -108,12 +109,12 @@ cash-out through reload, wallet receipt collection, proof checking and mobile ov
 
 ## Deploy
 
-1. Set the Worker name and route in `wrangler.jsonc`, and the developer in `src/manifest.json`.
+1. Set the Worker name and route in `wrangler.jsonc`.
 2. Set `DEVELOPER_KEY` with `npx wrangler secret put DEVELOPER_KEY`.
 3. In the repository's Actions settings, add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
 4. Push to `main`. The workflow tests, builds and deploys. `npm ci` installs `@hookedin/play` from its locked commit on
-   `main`; the update workflow takes current `main` every six hours and tests it before pushing the lockfile.
-5. Publish the manifest as `crash` in the wallet and fund the developer bank.
+   `main`; `npm update @hookedin/play` moves it.
+5. Publish the Worker's URL as `crash` from the account whose key it holds, and fund the developer bank.
 
 `npx wrangler deploy` publishes by hand. The intended route is `crash-game.hookedin.com`; configuring that route does
 not establish that the game has been deployed or listed.

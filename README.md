@@ -2,7 +2,7 @@
 
 A multiplayer Crash demo for [HookedIn](https://hookedin.com). One rocket, one rising multiplier, and a different exit
 plan for every player. Page and server ship together as one Cloudflare Worker, with one Durable Object for the room.
-The rocket flies with ETH: a wallet that practices with test coins watches the flight.
+The rocket flies with ETH: a wallet that practices watches the flight.
 
 The game includes manual and automatic escape, a live crew list, synthesized sound, keyboard controls, reduced motion,
 mobile layouts, durable cash-out decisions and a flight recorder that checks each revealed commitment.
@@ -80,8 +80,8 @@ under way or a payment is owed; an idle room sleeps until the next page or bet w
 settled. Completed proofs remain at `/api/flights/<id>`.
 
 Pages poll the room every 500 ms and animate locally. The room refreshes open casino bets at most once per second,
-with an immediate refresh after a bet or cash-out. A page whose room snapshot is stale pauses its controls. Test-coin
-and ETH rooms are separate. Only actual accepted bets appear in the crew; there are no invented players.
+with an immediate refresh after a bet or cash-out. A page whose room snapshot is stale pauses its controls. Only actual
+accepted bets appear in the crew; there are no invented players.
 
 ## Run against HookedIn
 

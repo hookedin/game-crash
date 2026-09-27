@@ -39,8 +39,6 @@ let ready = false,
   finishing = false,
   scope = '',
   asset = 'ETH',
-  /** The wallet practices, and a seat is a developer bet, placed with ETH: the flight is watched, not boarded. */
-  practice = false,
   uname: string | null = null;
 let view: FlightView | null = null,
   saved: Saved | null = null,
@@ -224,7 +222,7 @@ function showEscape(multiplier: number) {
 function render() {
   const mine = ownTicket(),
     live = fresh(),
-    locked = working || Boolean(saved) || practice;
+    locked = working || Boolean(saved);
   for (const control of [stake, auto, $<HTMLButtonElement>('half'), $<HTMLButtonElement>('double')])
     control.disabled = locked;
   target.disabled = locked || !auto.checked;
@@ -235,10 +233,6 @@ function render() {
   if (!ready) {
     label = 'Connecting…';
     detail = '';
-  } else if (practice) {
-    label = 'Seats need ETH';
-    detail = 'Switch to ETH above';
-    disabled = true;
   } else if (working) {
     label = saved?.escapeRequested ? 'Confirming escape…' : 'Confirming seat…';
     detail = '';
@@ -525,7 +519,6 @@ async function start() {
       assetLabels: document.querySelectorAll('[data-asset]'),
     });
     asset = startup.asset;
-    practice = startup.practice;
     uname = startup.wallet.uname;
     scope = startup.scope;
     bank.update(startup.state);
@@ -542,12 +535,7 @@ async function start() {
       if (receipt) await receive(receipt);
       else await act(ask);
       if (saved?.bet) setView(await api<FlightView>('/placed', {}));
-    } else
-      message(
-        practice
-          ? 'Seats are ETH only. Watch the flight here, or switch to ETH above to board.'
-          : 'Everyone rides the same rocket. Join, then escape before it crashes.',
-      );
+    } else message('Everyone rides the same rocket. Join, then escape before it crashes.');
   } catch (error: any) {
     message(error.message, true);
   }

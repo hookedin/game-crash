@@ -2,7 +2,6 @@
 
 A multiplayer Crash demo for [HookedIn](https://hookedin.com). One rocket, one rising multiplier, and a different exit
 plan for every player. Page and server ship together as one Cloudflare Worker, with one Durable Object for the room.
-The rocket flies with ETH: a wallet that practices watches the flight.
 
 The game includes manual and automatic escape, a live crew list, synthesized sound, keyboard controls, reduced motion,
 mobile layouts, durable cash-out decisions and recent crash points that each check their revealed secret.

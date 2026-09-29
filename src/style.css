@@ -192,11 +192,7 @@ h1 span {
 .input-wrap input:disabled {
   color: var(--muted);
 }
-.stake-wrap {
-  gap: 6px;
-  padding-right: 6px;
-}
-.stake-wrap button {
+.quick {
   flex-shrink: 0;
   min-width: 38px;
   height: 34px;
@@ -206,7 +202,7 @@ h1 span {
   font-size: 12px;
   font-weight: 700;
 }
-.stake-wrap button:hover:not(:disabled) {
+.quick:hover:not(:disabled) {
   background: #323844;
 }
 #auto-target + span {
@@ -348,6 +344,10 @@ kbd {
 .crew-row > :last-child {
   text-align: right;
 }
+.crew-row > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .crew-columns {
   padding-top: 4px;
   border-bottom-color: #2a2f3a;
@@ -444,6 +444,14 @@ dialog .proof-note {
   color: #9ba4b2;
   font-size: 26px;
 }
+@media (max-width: 900px) {
+  .controls {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .stake-field {
+    grid-column: 1 / -1;
+  }
+}
 @media (max-width: 600px) {
   .stage {
     height: 250px;
@@ -472,13 +480,6 @@ dialog .proof-note {
     left: 14px;
     bottom: 12px;
     font-size: 11px;
-  }
-  .stake-wrap {
-    gap: 4px;
-    padding-left: 10px;
-  }
-  .stake-wrap button {
-    min-width: 34px;
   }
   #action {
     height: 56px;

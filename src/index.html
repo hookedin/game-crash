@@ -36,12 +36,15 @@
         <div class="countdown"><div id="countdown"></div></div>
       </section>
       <section class="controls" aria-label="Your seat">
-        <div class="field">
-          <label for="stake">Stake <span data-asset>ETH</span></label>
-          <div class="input-wrap stake-wrap">
+        <div class="field stake-field">
+          <div class="stake-heading">
+            <label for="stake">Stake</label>
+            <button class="quick" type="button" id="half" aria-label="Halve stake">½</button>
+            <button class="quick" type="button" id="double" aria-label="Double stake">2×</button>
+          </div>
+          <div class="input-wrap">
             <input id="stake" inputmode="decimal" value="0.000001" autocomplete="off" />
-            <button type="button" id="half" aria-label="Halve stake">½</button>
-            <button type="button" id="double" aria-label="Double stake">2×</button>
+            <span data-asset>ETH</span>
           </div>
         </div>
         <div class="field">

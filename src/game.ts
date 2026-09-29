@@ -387,7 +387,7 @@ async function join() {
   if (BigInt(value) > limit) {
     const funded = await HookedIn.requestFunds({ amount: BigInt(value) - limit });
     bank.update(funded);
-    if (BigInt(funded.balance) < BigInt(value)) throw new Error('Add enough funds for your seat.');
+    if (BigInt(funded.balance) < BigInt(value)) throw new Error('Increase your game allowance to cover this seat.');
   }
   // A funding dialog can outlast boarding. Read the room again before saving or signing anything.
   setView(await api<FlightView>('/flight'));

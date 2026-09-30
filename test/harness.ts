@@ -78,7 +78,7 @@ export async function startHarness({
     const frame = document.querySelector('iframe');
     const endpoint = '/bridge/' + location.pathname.split('/').pop();
     function push(data) {
-      frame.contentWindow.postMessage({hookedin:true,event:'game.balance',...data.balance}, location.origin);
+      frame.contentWindow.postMessage({hookedin:true,event:'game.allowance',...data.allowance}, location.origin);
       for (const receipt of data.receipts || []) frame.contentWindow.postMessage({hookedin:true,event:'game.receipt',receipt}, location.origin);
     }
     addEventListener('message', async event => {
@@ -88,10 +88,10 @@ export async function startHarness({
         const response = await fetch(endpoint, {method:'POST',body:JSON.stringify({method,params})});
         const data = await response.json();
         frame.contentWindow.postMessage({hookedin:true,id,...(data.error ? {error:data.error} : {result:data.result})}, location.origin);
-        if(data.balance) push(data);
+        if(data.allowance) push(data);
       } catch (error) { frame.contentWindow.postMessage({hookedin:true,id,error:{code:'failed',message:error.message}},location.origin); }
     });
-    setInterval(async () => { try { const data=await (await fetch(endpoint)).json(); if(data.balance) push(data); } catch {} }, 500);
+    setInterval(async () => { try { const data=await (await fetch(endpoint)).json(); if(data.allowance) push(data); } catch {} }, 500);
   `;
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url!, 'http://localhost');
@@ -141,7 +141,7 @@ export async function startHarness({
             result = await pilot.fixture.bridge.call(method, params);
             if (method === 'wallet.info') result = { ...(result as object), recommendedStake: String(10n ** 15n) };
           }
-          return { result, balance: await pilot.fixture.bridge.balance(), receipts: pilot.events.splice(0) };
+          return { result, allowance: await pilot.fixture.bridge.allowance(), receipts: pilot.events.splice(0) };
         };
         const pending = pilot.queue.then(invoke);
         pilot.queue = pending.catch(() => {});

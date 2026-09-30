@@ -1,7 +1,7 @@
 import { keccak256 } from 'ethers';
 import { HookedIn } from '@hookedin/play/sdk/sdk';
 import type { GameReceipt } from '@hookedin/play/sdk/sdk';
-import { mountBank } from '@hookedin/play/sdk/bank';
+import { mountAllowance } from '@hookedin/play/sdk/allowance';
 import { createSynth } from '@hookedin/play/sdk/synth';
 import {
   BOARDING_MS,
@@ -31,7 +31,7 @@ const stake = $<HTMLInputElement>('stake'),
 const action = $<HTMLButtonElement>('action'),
   stage = $('stage'),
   toastBox = $('toast');
-const bank = mountBank($('bank')),
+const allowance = mountAllowance($('allowance')),
   sound = createSynth('afterburn:sound');
 const sky = createSky($<HTMLCanvasElement>('sky'), matchMedia('(prefers-reduced-motion: reduce)').matches);
 let ready = false,
@@ -278,7 +278,7 @@ function render() {
     $('action-label').textContent = label;
     $('action-detail').textContent = detail;
   } else showEscape(multiplierNow());
-  bank.setBusy(working);
+  allowance.setBusy(working);
   $('mute').textContent = sound.muted ? 'Sound off' : 'Sound on';
   $('mute').setAttribute('aria-pressed', String(sound.muted));
 }
@@ -382,13 +382,13 @@ async function join() {
       chosen > MAX_MULTIPLIER)
   )
     throw new Error('Choose an auto escape from 1.01× to 100×, with up to two decimal places.');
-  const limit = BigInt((await HookedIn.balance()).balance);
-  if (BigInt(value) > limit) {
-    const funded = await HookedIn.requestFunds({ amount: BigInt(value) - limit });
-    bank.update(funded);
-    if (BigInt(funded.balance) < BigInt(value)) throw new Error('Increase your game allowance to cover this seat.');
+  const current = BigInt((await HookedIn.allowance()).allowance);
+  if (BigInt(value) > current) {
+    const answer = await HookedIn.requestAllowance({ amount: BigInt(value) - current });
+    allowance.update(answer);
+    if (BigInt(answer.allowance) < BigInt(value)) throw new Error('Increase your game allowance to cover this seat.');
   }
-  // A funding dialog can outlast boarding. Read the room again before saving or signing anything.
+  // The wallet's dialog can outlast boarding. Read the room again before saving or signing anything.
   setView(await api<FlightView>('/flight'));
   if (view.phase !== 'boarding' || view.startsAt - serverNow() < 1_000)
     throw new Error('Boarding closed while your wallet was open. Join the next flight.');
@@ -516,7 +516,7 @@ async function start() {
     const startup = await HookedIn.initializeGame({ stakeInput: stake });
     uname = startup.wallet.uname;
     scope = startup.scope;
-    bank.update(startup.state);
+    allowance.update(startup.allowance);
     saved = JSON.parse(localStorage.getItem(scope) ?? 'null');
     ready = true;
     HookedIn.onReceipt(receipt => {

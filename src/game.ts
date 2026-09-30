@@ -386,7 +386,8 @@ async function join() {
   if (BigInt(value) > current) {
     const answer = await HookedIn.requestAllowance({ amount: BigInt(value) - current });
     allowance.update(answer);
-    if (BigInt(answer.allowance) < BigInt(value)) throw new Error('Allow this game more ETH to cover this seat, or deposit if your balance is empty.');
+    if (BigInt(answer.allowance) < BigInt(value))
+      throw new Error('Allow this game more ETH to cover this seat, or deposit if your balance is empty.');
   }
   // The wallet's dialog can outlast boarding. Read the room again before saving or signing anything.
   setView(await api<FlightView>('/flight'));

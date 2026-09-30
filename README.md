@@ -1,6 +1,6 @@
 # Afterburn
 
-A multiplayer Crash demo for [HookedIn](https://hookedin.com). One rocket, one rising multiplier, and a different exit
+A multiplayer crash game for [HookedIn](https://hookedin.com). One rocket, one rising multiplier, and a different exit
 plan for every player. Page and server ship together as one Cloudflare Worker, with one Durable Object for the room.
 
 The game includes manual and automatic escape, a live crew list, synthesized sound, keyboard controls, reduced motion,
@@ -118,9 +118,6 @@ cash-out through reload, wallet receipt collection, proof checking and mobile ov
    `main`; `npm update @hookedin/play` moves it.
 5. Publish the Worker's URL as `crash` from the account whose key it holds, and fund the developer bank.
 
-`npx wrangler deploy` publishes by hand. The intended route is `crash-game.hookedin.com`; configuring that route does
-not establish that the game has been deployed or listed.
-
-The implementation conclusion is in [docs/implementation.md](docs/implementation.md).
+`npx wrangler deploy` publishes by hand. It is served at `https://crash-game.hookedin.com/`.
 
 [MIT](LICENSE)

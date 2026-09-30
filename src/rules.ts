@@ -2,7 +2,7 @@ import { keccak256 } from 'ethers';
 
 export const BOARDING_MS = 8_000;
 export const COOLDOWN_MS = 5_000;
-export const RISE_MS = 6_500;
+const RISE_MS = 6_500;
 export const MAX_MULTIPLIER = 10_000;
 export const MAX_CREW = 64;
 const SPACE = 1n << 64n;
@@ -36,7 +36,7 @@ export const multiplierText = (multiplier: number) => `${(multiplier / 100).toFi
 export const payoutAt = (stake: string, multiplier: number) => (BigInt(stake) * BigInt(multiplier)) / 100n;
 export const casinoShare = (stake: string) => BigInt(stake) / 200n;
 
-export interface TicketTerms {
+interface TicketTerms {
   escapeHash: string;
   auto: number | null;
 }
@@ -51,7 +51,7 @@ export function terms(meta: Record<string, unknown>): TicketTerms | null {
   return { escapeHash: meta.escapeHash, auto: meta.auto as number | null };
 }
 
-export type TicketStatus = 'aboard' | 'escaped' | 'lost';
+type TicketStatus = 'aboard' | 'escaped' | 'lost';
 
 export interface PublicTicket {
   bet: string;

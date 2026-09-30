@@ -62,7 +62,7 @@ const fresh = () => Boolean(view) && performance.now() - arrivedAt < 1_800;
 const serverNow = () => (view?.now ?? Date.now()) + Math.min(performance.now() - arrivedAt, 1_800);
 /** The multiplier on screen: the room's, carried forward between its updates. */
 const multiplierNow = () =>
-  view?.phase === 'flying' ? multiplierAt(serverNow() - view.startsAt!) : view?.phase === 'ended' ? view.point! : 100;
+  view?.phase === 'flying' ? multiplierAt(serverNow() - view.startsAt) : view?.phase === 'ended' ? view.point! : 100;
 
 async function api<T>(path: string, body?: unknown): Promise<T> {
   const response = await fetch(`./api${path}`, {

@@ -175,7 +175,7 @@ export class Room {
         multiplier: ended
           ? crashPoint(flight.secret)
           : flight.phase === 'flying'
-            ? multiplierAt(now - flight.startsAt!)
+            ? multiplierAt(now - flight.startsAt)
             : 100,
         point: ended ? crashPoint(flight.secret) : null,
         secret: ended ? flight.secret : null,
@@ -204,7 +204,7 @@ export class Room {
       if (ticket.status === 'escaped') return publicTicket(ticket);
       if (flight.phase === 'boarding') throw new GameError('Wait for take-off.');
       if (ticket.status !== 'aboard' || flight.phase !== 'flying') throw new GameError('The flight has crashed.');
-      this.escape(ticket, multiplierAt(now - flight.startsAt!));
+      this.escape(ticket, multiplierAt(now - flight.startsAt));
       return publicTicket(ticket);
     });
   }

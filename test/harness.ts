@@ -44,7 +44,7 @@ export async function startHarness({
     kept: async id => proofs.get(id),
     wake: async () => {},
     developer: {
-      async bets({ after = '', limit = 100 } = {}) {
+      async bets({ after = '' } = {}) {
         const all: PublicDeveloperBet[] = [];
         for (const pilot of pilots.values()) {
           const page = await pilot.fixture.developer.bets();
@@ -55,8 +55,8 @@ export async function startHarness({
         }
         all.sort((a, b) => a.bet.localeCompare(b.bet));
         const eligible = all.filter(bet => bet.bet > after),
-          bets = eligible.slice(0, limit);
-        return { bets, cursor: bets.at(-1)?.bet ?? after, more: eligible.length > limit };
+          bets = eligible.slice(0, 100);
+        return { bets, cursor: bets.at(-1)?.bet ?? after, more: eligible.length > 100 };
       },
       async settle(payments) {
         const results: PublicDeveloperBet[] = [];
@@ -101,7 +101,7 @@ export async function startHarness({
         .end(JSON.stringify(value));
     try {
       if (url.pathname === '/') {
-        const fixture = await gameWallet(),
+        const fixture = await gameWallet({ deposit: 10n ** 18n, bank: 10n ** 18n }),
           id = randomBytes(8).toString('hex');
         const name =
           ['nova', 'orbit', 'comet', 'luna', 'cosmo'][pilots.size % 5]! + (pilots.size >= 5 ? pilots.size : '');
@@ -139,8 +139,7 @@ export async function startHarness({
             for await (const chunk of req) text += chunk;
             const { method, params } = JSON.parse(text);
             result = await pilot.fixture.bridge.call(method, params);
-            if (method === 'wallet.hello') result = { ...(result as object), asset: { symbol: 'DEMO', decimals: 4 } };
-            if (method === 'wallet.info') result = { ...(result as object), recommendedStake: '10000' };
+            if (method === 'wallet.info') result = { ...(result as object), recommendedStake: String(10n ** 15n) };
           }
           return { result, balance: await pilot.fixture.bridge.balance(), receipts: pilot.events.splice(0) };
         };

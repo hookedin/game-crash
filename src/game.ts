@@ -38,7 +38,6 @@ let ready = false,
   working = false,
   finishing = false,
   scope = '',
-  asset = 'ETH',
   uname: string | null = null;
 let view: FlightView | null = null,
   saved: Saved | null = null,
@@ -207,7 +206,7 @@ function plan() {
     const value = HookedIn.parseAmount(stake.value),
       at = Math.round(Number(target.value) * 100);
     if (!(at >= 101 && at <= MAX_MULTIPLIER)) return '';
-    return `Profit ${amount(payoutAt(value, at) - BigInt(value))} ${asset} at ${multiplierText(at)}`;
+    return `Profit ${amount(payoutAt(value, at) - BigInt(value))} ETH at ${multiplierText(at)}`;
   } catch {
     return '';
   }
@@ -216,7 +215,7 @@ function plan() {
 /** The escape button follows the rocket: the multiplier, and what escaping now pays. */
 function showEscape(multiplier: number) {
   $('action-label').textContent = `Escape ${multiplierText(multiplier)}`;
-  $('action-detail').textContent = `${amount(payoutAt(saved!.stake, multiplier))} ${asset}`;
+  $('action-detail').textContent = `${amount(payoutAt(saved!.stake, multiplier))} ETH`;
 }
 
 function render() {
@@ -329,17 +328,17 @@ async function receive(receipt: GameReceipt) {
     const paid = BigInt(receipt.payout!);
     if (paid !== expected) {
       proofFault = true;
-      throw new Error(`The wallet received ${amount(paid)} ${asset}; this flight owes ${amount(expected)} ${asset}.`);
+      throw new Error(`The wallet received ${amount(paid)} ETH; this flight owes ${amount(expected)} ETH.`);
     }
     saved = null;
     persist();
-    if (!ticket) message(`Your seat was not accepted. ${amount(paid)} ${asset} refunded.`);
+    if (!ticket) message(`Your seat was not accepted. ${amount(paid)} ETH refunded.`);
     else if (ticket.status === 'escaped') {
-      message(`Escaped at ${multiplierText(ticket.multiplier!)}. ${amount(paid)} ${asset} is in your balance.`);
-      toast(`Escaped at ${multiplierText(ticket.multiplier!)} · +${amount(paid - BigInt(pending.stake))} ${asset}`);
+      message(`Escaped at ${multiplierText(ticket.multiplier!)}. ${amount(paid)} ETH is in your balance.`);
+      toast(`Escaped at ${multiplierText(ticket.multiplier!)} · +${amount(paid - BigInt(pending.stake))} ETH`);
       sky.celebrate();
       sound.melody([440, 554, 659, 880], 0.08, { gain: 0.055 });
-    } else message(`The rocket crashed before you escaped. ${amount(pending.stake)} ${asset} lost.`);
+    } else message(`The rocket crashed before you escaped. ${amount(pending.stake)} ETH lost.`);
   } catch (error: any) {
     message(error.message, true);
   } finally {
@@ -514,11 +513,7 @@ function animate(time: number) {
 
 async function start() {
   try {
-    const startup = await HookedIn.initializeGame({
-      stakeInput: stake,
-      assetLabels: document.querySelectorAll('[data-asset]'),
-    });
-    asset = startup.asset;
+    const startup = await HookedIn.initializeGame({ stakeInput: stake });
     uname = startup.wallet.uname;
     scope = startup.scope;
     bank.update(startup.state);

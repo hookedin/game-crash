@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Wallet } from 'ethers';
-import { DEVELOPER_PROTOCOL, LIMITS } from '@hookedin/play/sdk/developer';
+import { DEVELOPER_PROTOCOL } from '@hookedin/play/sdk/developer';
 import worker, { CrashRoom } from './worker.ts';
 
 function fixture(t: any) {
@@ -15,7 +15,6 @@ function fixture(t: any) {
         chainId: '31337',
         contractAddress: '0x' + 'c'.repeat(40),
         developerProtocol: DEVELOPER_PROTOCOL,
-        limits: LIMITS,
       });
     }
     if (String(url).includes('/api/developer-bets?')) return Response.json({ bets: [], cursor: '', more: false });

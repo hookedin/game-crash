@@ -13,13 +13,12 @@ body {
   min-height: 100vh;
   background: radial-gradient(ellipse at 10% 0, #292024 0, transparent 40%), var(--dark);
 }
-h1 {
-  font-weight: 900;
-  font-style: italic;
-  text-transform: uppercase;
-}
-h1 span {
+.eyebrow {
   color: var(--accent);
+  font-size: 10px;
+  letter-spacing: 2px;
+  font-weight: 700;
+  text-transform: uppercase;
 }
 .stage {
   height: 340px;

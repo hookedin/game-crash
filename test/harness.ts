@@ -78,7 +78,6 @@ export async function startHarness({
     const frame = document.querySelector('iframe');
     const endpoint = '/bridge/' + location.pathname.split('/').pop();
     function push(data) {
-      frame.contentWindow.postMessage({hookedin:true,event:'game.allowance',...data.allowance}, location.origin);
       for (const receipt of data.receipts || []) frame.contentWindow.postMessage({hookedin:true,event:'game.receipt',receipt}, location.origin);
     }
     addEventListener('message', async event => {
@@ -88,10 +87,10 @@ export async function startHarness({
         const response = await fetch(endpoint, {method:'POST',body:JSON.stringify({method,params})});
         const data = await response.json();
         frame.contentWindow.postMessage({hookedin:true,id,...(data.error ? {error:data.error} : {result:data.result})}, location.origin);
-        if(data.allowance) push(data);
+        push(data);
       } catch (error) { frame.contentWindow.postMessage({hookedin:true,id,error:{code:'failed',message:error.message}},location.origin); }
     });
-    setInterval(async () => { try { const data=await (await fetch(endpoint)).json(); if(data.allowance) push(data); } catch {} }, 500);
+    setInterval(async () => { try { push(await (await fetch(endpoint)).json()); } catch {} }, 500);
   `;
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url!, 'http://localhost');
@@ -119,7 +118,7 @@ export async function startHarness({
         return void res
           .writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
           .end(
-            `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Afterburn · Local preview</title><style>body{margin:0;background:#101219}header{height:30px;display:flex;align-items:center;justify-content:center;gap:16px;background:#282c27;color:#c6d6ba;font:10px system-ui}a{color:#c6f9a7}iframe{display:block;width:100%;height:calc(100dvh - 30px);border:0}</style></head><body><header>LOCAL PREVIEW · SIMULATED FUNDS <a href="/" target="_blank" rel="noopener">Join as another pilot ↗</a></header><iframe title="Afterburn" sandbox="allow-scripts allow-same-origin" src="/game/"></iframe><script src="/preview.js"></script></body></html>`,
+            `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Crash · Local preview</title><style>body{margin:0;background:#101219}header{height:30px;display:flex;align-items:center;justify-content:center;gap:16px;background:#282c27;color:#c6d6ba;font:10px system-ui}a{color:#c6f9a7}iframe{display:block;width:100%;height:calc(100dvh - 30px);border:0}</style></head><body><header>LOCAL PREVIEW · SIMULATED FUNDS <a href="/" target="_blank" rel="noopener">Join as another pilot ↗</a></header><iframe title="Crash" sandbox="allow-scripts allow-same-origin" src="/game/"></iframe><script src="/preview.js"></script></body></html>`,
           );
       }
       if (url.pathname === '/preview.js')
@@ -141,7 +140,7 @@ export async function startHarness({
             result = await pilot.fixture.bridge.call(method, params);
             if (method === 'wallet.info') result = { ...(result as object), recommendedStake: String(10n ** 15n) };
           }
-          return { result, allowance: await pilot.fixture.bridge.allowance(), receipts: pilot.events.splice(0) };
+          return { result, receipts: pilot.events.splice(0) };
         };
         const pending = pilot.queue.then(invoke);
         pilot.queue = pending.catch(() => {});
@@ -231,9 +230,7 @@ export async function startHarness({
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const local = await startHarness({ port: 8791 });
-  console.log(
-    `Afterburn local preview: ${local.url}\nSimulated funds only. Open the link in another tab to add a player.`,
-  );
+  console.log(`Crash local preview: ${local.url}\nSimulated funds only. Open the link in another tab to add a player.`);
   const stop = () => {
     void local.close().then(() => process.exit());
   };

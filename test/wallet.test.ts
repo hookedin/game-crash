@@ -9,7 +9,8 @@ import { SECRET, TOKEN } from './fixture.ts';
 test('the actual SDK wallet signs a flight bet, verifies the developer’s settlement and credits the exact escape payout', async () => {
   const x = await gameWallet();
   x.wallet.openGame(x.identity());
-  await x.wallet.setGameAllowance('100000');
+  // A seat is a developer bet, which the player allows apart.
+  await x.wallet.setGameAllowance('100000', true);
   let now = Date.now();
   const room = new Room({
     developer: x.developer,
@@ -28,7 +29,7 @@ test('the actual SDK wallet signs a flight bet, verifies the developer’s settl
     meta: { escapeHash: keccak256(TOKEN), auto: 200 },
   });
   assert.equal(receipt.status, 'open');
-  assert.equal((await x.bridge.allowance()).allowance, '90000');
+  assert.equal((await x.bridge.call('game.allowance')).allowance, '90000');
   await room.sync(true);
   now = (await room.view()).startsAt + timeTo(200);
   await room.sync(true);
@@ -36,7 +37,10 @@ test('the actual SDK wallet signs a flight bet, verifies the developer’s settl
   const paid = await x.bridge.call('game.receipt', { id: 'flight-seat' });
   assert.equal(paid.status, 'settled');
   assert.equal(paid.payout, '20000');
-  assert.equal((await x.bridge.allowance()).allowance, '110000');
+  // What the escape paid waits in the flight's group until the page has shown it.
+  assert.equal((await x.bridge.call('game.allowance')).allowance, '90000');
+  await x.bridge.call('game.end', { group: flight.id });
+  assert.equal((await x.bridge.call('game.allowance')).allowance, '110000');
   assert.equal(await x.wallet.balance(), 1010000n);
   assert.equal(x.bank(), 10n ** 12n + 10000n - 20000n - 50n);
 });

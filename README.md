@@ -1,4 +1,4 @@
-# Afterburn
+# Crash
 
 A multiplayer crash game for [HookedIn](https://hookedin.com). One rocket, one rising multiplier, and a different exit
 plan for every player. Page and server ship together as one Cloudflare Worker, with one Durable Object for the room.

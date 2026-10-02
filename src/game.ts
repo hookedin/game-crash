@@ -1,7 +1,6 @@
 import { keccak256 } from 'ethers';
 import { HookedIn } from '@hookedin/play/sdk/sdk';
 import type { GameReceipt } from '@hookedin/play/sdk/sdk';
-import { mountAllowance } from '@hookedin/play/sdk/allowance';
 import { createSynth } from '@hookedin/play/sdk/synth';
 import {
   BOARDING_MS,
@@ -31,8 +30,7 @@ const stake = $<HTMLInputElement>('stake'),
 const action = $<HTMLButtonElement>('action'),
   stage = $('stage'),
   toastBox = $('toast');
-const allowance = mountAllowance($('allowance')),
-  sound = createSynth('afterburn:sound');
+const sound = createSynth('crash:sound');
 const sky = createSky($<HTMLCanvasElement>('sky'), matchMedia('(prefers-reduced-motion: reduce)').matches);
 let ready = false,
   working = false,
@@ -278,7 +276,6 @@ function render() {
     $('action-label').textContent = label;
     $('action-detail').textContent = detail;
   } else showEscape(multiplierNow());
-  allowance.setBusy(working);
   $('mute').textContent = sound.muted ? 'Sound off' : 'Sound on';
   $('mute').setAttribute('aria-pressed', String(sound.muted));
 }
@@ -326,6 +323,8 @@ async function receive(receipt: GameReceipt) {
         : 0n
       : BigInt(pending.stake);
     const paid = BigInt(receipt.payout!);
+    // The flight is over here: what it paid joins the allowance the wallet shows.
+    void HookedIn.end(pending.flight).catch(() => {});
     if (paid !== expected) {
       proofFault = true;
       throw new Error(`The wallet received ${amount(paid)} ETH; this flight owes ${amount(expected)} ETH.`);
@@ -382,12 +381,13 @@ async function join() {
       chosen > MAX_MULTIPLIER)
   )
     throw new Error('Choose an auto escape from 1.01× to 100×, with up to two decimal places.');
-  const current = BigInt((await HookedIn.allowance()).allowance);
-  if (BigInt(value) > current) {
-    const answer = await HookedIn.requestAllowance({ amount: BigInt(value) - current });
-    allowance.update(answer);
-    if (BigInt(answer.allowance) < BigInt(value))
-      throw new Error('Allow this game more ETH to cover this seat, or deposit if your balance is empty.');
+  // A seat is a developer bet, which the player allows apart from the casino's.
+  const current = await HookedIn.allowance(),
+    short = BigInt(value) - BigInt(current.allowance);
+  if (short > 0n || !current.developerBets) {
+    const answer = await HookedIn.requestAllowance({ amount: short > 0n ? short : undefined, developerBets: true });
+    if (BigInt(answer.allowance) < BigInt(value) || !answer.developerBets)
+      throw new Error('Allow this game to bet this seat with its developer, or deposit if your balance is empty.');
   }
   // The wallet's dialog can outlast boarding. Read the room again before saving or signing anything.
   setView(await api<FlightView>('/flight'));
@@ -517,7 +517,6 @@ async function start() {
     const startup = await HookedIn.initializeGame({ stakeInput: stake });
     uname = startup.wallet.uname;
     scope = startup.scope;
-    allowance.update(startup.allowance);
     saved = JSON.parse(localStorage.getItem(scope) ?? 'null');
     ready = true;
     HookedIn.onReceipt(receipt => {

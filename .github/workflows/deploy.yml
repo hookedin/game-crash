@@ -17,6 +17,8 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # Every build takes play's newest main, and play's release runs this workflow when main moves.
+      - run: npm update @hookedin/play
       - run: npm run format:check
       - run: npm test
       - name: Publish to Cloudflare

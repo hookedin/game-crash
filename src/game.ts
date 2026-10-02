@@ -542,7 +542,7 @@ async function start() {
 function scaleStake(up: boolean) {
   try {
     const units = BigInt(HookedIn.parseAmount(stake.value));
-    stake.value = HookedIn.exactAmount(up ? units * 2n : units / 2n || 1n);
+    stake.value = HookedIn.exactAmount(up ? units * 2n : HookedIn.wholeStake(units / 2n));
   } catch {}
   render();
 }

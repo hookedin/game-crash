@@ -53,7 +53,7 @@ const message = (text: string, error = false) => {
   $('status').dataset.error = String(error);
 };
 const persist = () => (saved ? localStorage.setItem(scope, JSON.stringify(saved)) : localStorage.removeItem(scope));
-const amount = (value: string | bigint) => HookedIn.formatAmount(value, 6);
+const amount = (value: string | bigint) => HookedIn.formatAmount(value);
 const ownTicket = () => view?.tickets.find(t => t.bet === saved?.bet || t.uname === uname);
 const fresh = () => Boolean(view) && performance.now() - arrivedAt < 1_800;
 const serverNow = () => (view?.now ?? Date.now()) + Math.min(performance.now() - arrivedAt, 1_800);
@@ -204,7 +204,7 @@ function plan() {
     const value = HookedIn.parseAmount(stake.value),
       at = Math.round(Number(target.value) * 100);
     if (!(at >= 101 && at <= MAX_MULTIPLIER)) return '';
-    return `Profit ${amount(payoutAt(value, at) - BigInt(value))} ETH at ${multiplierText(at)}`;
+    return `Profit ${amount(payoutAt(value, at) - BigInt(value))} µETH at ${multiplierText(at)}`;
   } catch {
     return '';
   }
@@ -213,7 +213,7 @@ function plan() {
 /** The escape button follows the rocket: the multiplier, and what escaping now pays. */
 function showEscape(multiplier: number) {
   $('action-label').textContent = `Escape ${multiplierText(multiplier)}`;
-  $('action-detail').textContent = `${amount(payoutAt(saved!.stake, multiplier))} ETH`;
+  $('action-detail').textContent = `${amount(payoutAt(saved!.stake, multiplier))} µETH`;
 }
 
 function render() {
@@ -327,17 +327,17 @@ async function receive(receipt: GameReceipt) {
     void HookedIn.end(pending.flight).catch(() => {});
     if (paid !== expected) {
       proofFault = true;
-      throw new Error(`The wallet received ${amount(paid)} ETH; this flight owes ${amount(expected)} ETH.`);
+      throw new Error(`The wallet received ${amount(paid)} µETH; this flight owes ${amount(expected)} µETH.`);
     }
     saved = null;
     persist();
-    if (!ticket) message(`Your seat was not accepted. ${amount(paid)} ETH refunded.`);
+    if (!ticket) message(`Your seat was not accepted. ${amount(paid)} µETH refunded.`);
     else if (ticket.status === 'escaped') {
-      message(`Escaped at ${multiplierText(ticket.multiplier!)}. ${amount(paid)} ETH is in your balance.`);
-      toast(`Escaped at ${multiplierText(ticket.multiplier!)} · +${amount(paid - BigInt(pending.stake))} ETH`);
+      message(`Escaped at ${multiplierText(ticket.multiplier!)}. ${amount(paid)} µETH is in your balance.`);
+      toast(`Escaped at ${multiplierText(ticket.multiplier!)} · +${amount(paid - BigInt(pending.stake))} µETH`);
       sky.celebrate();
       sound.melody([440, 554, 659, 880], 0.08, { gain: 0.055 });
-    } else message(`The rocket crashed before you escaped. ${amount(pending.stake)} ETH lost.`);
+    } else message(`The rocket crashed before you escaped. ${amount(pending.stake)} µETH lost.`);
   } catch (error: any) {
     message(error.message, true);
   } finally {

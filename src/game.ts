@@ -24,6 +24,8 @@ interface Saved {
   escapeRequested?: boolean;
 }
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
+/** The room shows itself every few seconds when nothing changes: a page that hears nothing for longer has lost it. */
+const STALE_MS = 7_000;
 const stake = $<HTMLInputElement>('stake'),
   target = $<HTMLInputElement>('auto-target'),
   auto = $<HTMLInputElement>('auto-enabled');
@@ -39,8 +41,15 @@ let ready = false,
   uname: string | null = null;
 let view: FlightView | null = null,
   saved: Saved | null = null,
-  arrivedAt = 0,
-  proofFault = false;
+  arrivedAt = -Infinity,
+  proofFault = false,
+  /** The bet whose seat the page has told the player about. */
+  seated = '',
+  /** When the page last asked the wallet about its bet. */
+  askedAt = -Infinity,
+  /** The room's events, and when the page last connected to them. */
+  source: EventSource | null = null,
+  connectedAt = -Infinity;
 let lastPhase = '',
   lastFlight = '',
   lastTick = -1,
@@ -55,8 +64,8 @@ const message = (text: string, error = false) => {
 const persist = () => (saved ? localStorage.setItem(scope, JSON.stringify(saved)) : localStorage.removeItem(scope));
 const amount = (value: string | bigint) => HookedIn.formatAmount(value);
 const ownTicket = () => view?.tickets.find(t => t.bet === saved?.bet || t.uname === uname);
-const fresh = () => Boolean(view) && performance.now() - arrivedAt < 1_800;
-const serverNow = () => (view?.now ?? Date.now()) + Math.min(performance.now() - arrivedAt, 1_800);
+const fresh = () => Boolean(view) && performance.now() - arrivedAt < STALE_MS;
+const serverNow = () => (view?.now ?? Date.now()) + Math.min(performance.now() - arrivedAt, STALE_MS);
 /** The multiplier on screen: the room's, carried forward between its updates. */
 const multiplierNow = () =>
   view?.phase === 'flying' ? multiplierAt(serverNow() - view.startsAt) : view?.phase === 'ended' ? view.point! : 100;
@@ -109,9 +118,22 @@ function setView(next: FlightView) {
         `${ticket.uname === uname ? 'You' : ticket.alias ? '@' + ticket.alias : '~' + ticket.uname} escaped at ${multiplierText(ticket.multiplier!)}`,
       );
   }
+  seat();
   renderCrew();
   renderHistory();
   render();
+}
+
+/** Tells the player about their seat once the room shows it, and whether it has. */
+function seat() {
+  if (!saved?.bet || seated === saved.bet || ownTicket()?.bet !== saved.bet) return seated === saved?.bet;
+  seated = saved.bet;
+  message(
+    saved.auto !== null
+      ? `You’re aboard. Auto escape at ${multiplierText(saved.auto)} holds even if you close the page.`
+      : 'You’re aboard. Press Escape before the crash.',
+  );
+  return true;
 }
 
 function toast(text: string) {
@@ -303,8 +325,8 @@ async function receive(receipt: GameReceipt) {
   if (receipt.status === 'open') return;
   finishing = true;
   try {
-    const current = await api<FlightView>('/flight');
-    setView(current);
+    const current = view;
+    if (!current || !fresh()) throw new Error('Waiting for the room to check your payment.');
     if (proofFault) throw new Error('This flight’s secret does not match its ID. Betting is paused.');
     let ticket = current.id === pending.flight ? current.tickets.find(t => t.bet === pending.bet) : undefined;
     if (current.id !== pending.flight) {
@@ -356,16 +378,9 @@ async function ask() {
       meta: { escapeHash: keccak256(pending.token), auto: pending.auto },
     }),
   );
-  if (saved?.id === pending.id && saved.bet) {
-    setView(await api<FlightView>('/placed', {}));
-    message(
-      !ownTicket()
-        ? 'Checking your seat. A seat the room does not accept is refunded.'
-        : pending.auto !== null
-          ? `You’re aboard. Auto escape at ${multiplierText(pending.auto)} holds even if you close the page.`
-          : 'You’re aboard. Press Escape before the crash.',
-    );
-  }
+  // The room hears of the bet from the casino, and shows the seat.
+  if (saved?.id === pending.id && saved.bet && !seat())
+    message('Checking your seat. A seat the room does not accept is refunded.');
 }
 
 async function join() {
@@ -389,9 +404,8 @@ async function join() {
     if (BigInt(answer.allowance) < BigInt(value) || !answer.developerBets)
       throw new Error('Allow this game to bet this seat with its developer, or deposit if your balance is empty.');
   }
-  // The wallet's dialog can outlast boarding. Read the room again before saving or signing anything.
-  setView(await api<FlightView>('/flight'));
-  if (view.phase !== 'boarding' || view.startsAt - serverNow() < 1_000)
+  // The wallet's dialog can outlast boarding. Check the room again before saving or signing anything.
+  if (!fresh() || view.phase !== 'boarding' || view.startsAt - serverNow() < 1_000)
     throw new Error('Boarding closed while your wallet was open. Join the next flight.');
   saved = {
     id: crypto.randomUUID(),
@@ -440,24 +454,36 @@ async function act(work: () => Promise<void>) {
   }
 }
 
-async function watch() {
-  try {
-    setView(await api<FlightView>('/flight'));
-    if (saved?.bet && !working && !finishing) {
-      const id = saved.id;
-      if (saved.escapeRequested && ownTicket()?.status === 'aboard' && view!.phase === 'flying') await act(escape);
-      const receipt = await HookedIn.receipt(id);
-      if (receipt) await receive(receipt);
-    }
-  } catch (error: any) {
-    if (!fresh())
-      message(`Connection interrupted.${saved?.auto ? ' Auto escape remains active.' : ''} ${error.message}`, true);
-  }
-  render();
-  setTimeout(() => {
-    void watch();
-  }, 500);
+/** What the page does when it hears from the room: an escape asked for before a reload is asked again, and once the
+ * room has paid the bet, or given its stake back, the wallet is asked to collect it. */
+async function carryOn() {
+  if (!view || !saved?.bet || working || finishing) return;
+  const mine = ownTicket();
+  if (saved.escapeRequested && mine?.status === 'aboard' && view.phase === 'flying') return act(escape);
+  const settled = mine ? mine.paid : view.id !== saved.flight || view.phase !== 'boarding';
+  if (!settled || performance.now() - askedAt < 3_000) return;
+  askedAt = performance.now();
+  const receipt = await HookedIn.receipt(saved.id);
+  if (receipt) await receive(receipt);
 }
+
+/** The room's events: each change, and the room every few seconds. A page that hears nothing for a while connects
+ * again. */
+function connect() {
+  source?.close();
+  connectedAt = performance.now();
+  source = new EventSource('./api/live');
+  source.onmessage = event => {
+    setView(JSON.parse(event.data));
+    void carryOn().catch(error => message(error.message, true));
+  };
+}
+setInterval(() => {
+  if (fresh() || performance.now() - connectedAt < STALE_MS) return;
+  if (view) message(`Connection interrupted.${saved?.auto ? ' Auto escape remains active.' : ''}`, true);
+  render();
+  connect();
+}, 1_000);
 
 function animate(time: number) {
   if (time - lastRender > 200) {
@@ -529,13 +555,13 @@ async function start() {
       const receipt = await HookedIn.receipt(saved.id);
       if (receipt) await receive(receipt);
       else await act(ask);
-      if (saved?.bet) setView(await api<FlightView>('/placed', {}));
+      // An escape asked for before the reload goes again at once, if the room is in flight.
+      await carryOn();
     } else message('Everyone rides the same rocket. Join, then escape before it crashes.');
   } catch (error: any) {
     message(error.message, true);
   }
   render();
-  void watch();
 }
 
 /** Halve or double the stake exactly, down to one unit; an unreadable stake is left for the player to fix. */
@@ -573,4 +599,5 @@ document.addEventListener('keydown', event => {
 });
 render();
 requestAnimationFrame(animate);
+connect();
 void start();

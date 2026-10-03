@@ -1,5 +1,5 @@
 import { keccak256 } from 'ethers';
-import type { Developer, PublicDeveloperBet } from '@hookedin/play/sdk/developer';
+import type { Developer } from '@hookedin/play/sdk/developer';
 import {
   BOARDING_MS,
   COOLDOWN_MS,
@@ -43,8 +43,19 @@ export interface RoomDeps {
   save(state: RoomState): Promise<void>;
   keep(proof: FlightProof): Promise<void>;
   kept(id: string): Promise<FlightProof | undefined>;
+  /** Ask for `tick()` at this time. */
   wake(at: number): Promise<void>;
+  /** Shows every watching page the room as it stands. */
+  show(view: FlightView): void;
+  /** Whether any page is watching. */
+  watched(): boolean;
 }
+/** How often a watched room shows itself when nothing changes, so that its pages know they still hear it. */
+export const HEARTBEAT_MS = 3_000;
+/** How long the casino holds a read of new bets until one is placed, in seconds. */
+const WAIT_S = 25;
+/** How soon a casino request that failed is tried again. */
+const RETRY_MS = 1_000;
 
 export class GameError extends Error {
   status: number;
@@ -62,15 +73,24 @@ const payment = (ticket: Ticket): Payment => ({
   player: ticket.payout!,
   casino: String(casinoShare(ticket.stake)),
 });
+/** Every payout decided and not yet paid, and every stake to give back. */
+const owed = ({ flight, outbox }: RoomState) => [
+  ...flight!.tickets.filter(t => t.payout !== null && !t.paid).map(payment),
+  ...outbox,
+];
 
 /** The actor orders decisions and durable writes. Casino requests run outside that queue so a slow payout cannot
  * hold up a player's escape. An accepted escape is saved before it is acknowledged or sent for settlement. */
 export class Room {
   private state: RoomState;
   private queue: Promise<unknown> = Promise.resolve();
-  private syncing: Promise<void> | null = null;
-  private again: Promise<void> | null = null;
-  private lastSync = -Infinity;
+  /** Where the room has read the casino's bets up to. A room starts from the oldest open bet and passes over those it
+   * took already, by their hash. */
+  private cursor = '';
+  private following = false;
+  private paying: Promise<void> | null = null;
+  /** When the room last showed itself to its pages. */
+  private shownAt = -Infinity;
   readonly deps: RoomDeps;
 
   constructor(deps: RoomDeps, saved?: RoomState) {
@@ -78,22 +98,53 @@ export class Room {
     this.state = structuredClone(saved ?? { flight: null, history: [], outbox: [] });
   }
 
-  private edit<T>(work: (draft: RoomState, now: number) => T | Promise<T>): Promise<T> {
+  /** One decision at a time, on a copy saved before it is kept or answered. A change is shown to every watching page
+   * (`show` shows the room either way), and the room asks to be woken for what comes next. */
+  private edit<T>(work: (draft: RoomState, now: number) => T | Promise<T>, show = false): Promise<T> {
     const next = this.queue.then(async () => {
       const draft = structuredClone(this.state),
         now = this.deps.now();
-      // While the room has work, the alarm is durable even if saving a decision or answering the request fails.
-      if (underWay(this.state)) await this.deps.wake(now + 1_000);
       await this.advance(draft, now);
       const result = await work(draft, now);
-      if (JSON.stringify(draft) !== JSON.stringify(this.state)) await this.deps.save(draft);
-      // The first accepted seat starts the alarm.
-      if (!underWay(this.state) && underWay(draft)) await this.deps.wake(now + 1_000);
+      const changed = JSON.stringify(draft) !== JSON.stringify(this.state);
+      if (changed) await this.deps.save(draft);
       this.state = draft;
+      if (changed || show) {
+        this.deps.show(this.viewOf(draft, now));
+        this.shownAt = now;
+      }
+      const at = this.nextWake(now);
+      if (at !== null) await this.deps.wake(at);
       return result;
     });
     this.queue = next.catch(() => {});
     return next;
+  }
+
+  /** When the room next needs waking, or null if it does not. While a page watches or somebody is aboard or owed: at
+   * the flight's next change by the clock (take-off, an auto escape, the crash or the next flight), and shortly while a
+   * payment is owed or the next flight waits for one. While a page watches, a heartbeat after the room last showed
+   * itself. */
+  private nextWake(now: number) {
+    const watched = this.deps.watched();
+    if (!watched && !underWay(this.state)) return null;
+    const flight = this.state.flight!,
+      point = crashPoint(flight.secret),
+      end = flight.startsAt + timeTo(point);
+    let at =
+      flight.phase === 'boarding'
+        ? flight.startsAt
+        : flight.phase === 'flying'
+          ? Math.min(
+              end,
+              ...flight.tickets
+                .filter(t => t.status === 'aboard' && t.auto !== null && (t.auto < point || point === MAX_MULTIPLIER))
+                .map(t => flight.startsAt + timeTo(t.auto!)),
+            )
+          : end + COOLDOWN_MS;
+    if (at <= now) at = now + RETRY_MS;
+    if (owed(this.state).length) at = Math.min(at, now + RETRY_MS);
+    return watched ? Math.min(at, Math.max(this.shownAt + HEARTBEAT_MS, now)) : at;
   }
 
   /** A flight boards for `BOARDING_MS` and takes off, whether or not anybody boards it. */
@@ -157,34 +208,43 @@ export class Room {
     }
   }
 
-  /** Whether somebody is aboard or a payment is still owed. Otherwise the room needs no alarm: the next page to open
-   * it, or the bet a page reports, wakes it. */
+  /** Whether somebody is aboard or a payment is still owed. Otherwise only a watching page needs the room awake: the
+   * next page to open it finds it where the clock has it. */
   underWay() {
     return underWay(this.state);
   }
 
+  /** The room as a page shows it. */
+  private viewOf(state: RoomState, now: number): FlightView {
+    const flight = state.flight!,
+      ended = flight.phase === 'ended';
+    return {
+      id: flight.id,
+      phase: flight.phase,
+      startsAt: flight.startsAt,
+      now,
+      multiplier: ended
+        ? crashPoint(flight.secret)
+        : flight.phase === 'flying'
+          ? multiplierAt(now - flight.startsAt)
+          : 100,
+      point: ended ? crashPoint(flight.secret) : null,
+      secret: ended ? flight.secret : null,
+      tickets: flight.tickets.map(publicTicket),
+      history: ended
+        ? [{ id: flight.id, point: crashPoint(flight.secret), secret: flight.secret }, ...state.history].slice(0, 12)
+        : state.history,
+    };
+  }
+
   view(): Promise<FlightView> {
-    return this.edit((draft, now) => {
-      const flight = draft.flight!,
-        ended = flight.phase === 'ended';
-      return {
-        id: flight.id,
-        phase: flight.phase,
-        startsAt: flight.startsAt,
-        now,
-        multiplier: ended
-          ? crashPoint(flight.secret)
-          : flight.phase === 'flying'
-            ? multiplierAt(now - flight.startsAt)
-            : 100,
-        point: ended ? crashPoint(flight.secret) : null,
-        secret: ended ? flight.secret : null,
-        tickets: flight.tickets.map(publicTicket),
-        history: ended
-          ? [{ id: flight.id, point: crashPoint(flight.secret), secret: flight.secret }, ...draft.history].slice(0, 12)
-          : draft.history,
-      };
-    });
+    return this.edit((draft, now) => this.viewOf(draft, now));
+  }
+
+  /** The room's wake: it comes up to the clock, shows itself to every watching page and pays what it owes. */
+  async tick() {
+    await this.edit(() => {}, true);
+    this.payLater();
   }
 
   async kept(id: string) {
@@ -209,97 +269,107 @@ export class Room {
     });
   }
 
-  /** Refresh from the casino at most once per second. Calls during a refresh share it, except a forced one: it reads the
-   * casino after it was asked, since the refresh under way may have read it before the bet its caller placed, so every
-   * forced call meanwhile shares the refresh that follows. Cash-outs never wait for either. */
-  sync(force = false): Promise<void> {
-    if (this.syncing && force)
-      return (this.again ??= this.syncing
-        .catch(() => {})
-        .then(() => {
-          this.again = null;
-          return this.sync(true);
-        }));
-    if (this.syncing) return this.syncing;
-    if (!force && this.deps.now() - this.lastSync < 1_000) return Promise.resolve();
-    this.lastSync = this.deps.now();
-    this.syncing = this.refresh().finally(() => {
-      this.syncing = null;
-    });
-    return this.syncing;
+  /** While a page watches, the room follows the casino's bets: the casino holds each read until a bet on the game is
+   * placed, so each is seated, or given its stake back, as it comes. */
+  async follow() {
+    if (this.following) return;
+    this.following = true;
+    try {
+      while (this.deps.watched()) {
+        const asked = Date.now();
+        try {
+          // An empty page long before the wait is up means another server took the game's wait: both back off,
+          // rather than answer each other's waits as fast as the network goes.
+          if ((await this.read(WAIT_S)) || Date.now() - asked > (WAIT_S * 1000) / 2) continue;
+        } catch (error: any) {
+          console.error('Flight bets:', error.message);
+          // Again from the oldest open bet: the casino may have been away, or restored its records.
+          this.cursor = '';
+        }
+        await new Promise(resolve => setTimeout(resolve, RETRY_MS));
+      }
+    } finally {
+      this.following = false;
+    }
   }
 
-  private async refresh() {
-    try {
-      const bets: PublicDeveloperBet[] = [];
-      for (let after = ''; ;) {
-        const page = await this.deps.developer.bets({ status: 'open', after });
-        bets.push(...page.bets);
-        if (!page.more) break;
-        after = page.cursor;
+  /** The bets placed since the room last read, a page of them, waiting up to `wait` seconds for one: each is seated or
+   * given its stake back, and then paid what is owed. The cursor moves on once the page is saved. Resolves with how
+   * many bets it read. */
+  async read(wait = 0) {
+    const page = await this.deps.developer.bets({ after: this.cursor, wait });
+    await this.edit(async draft => {
+      const flight = draft.flight!;
+      for (const bet of page.bets) {
+        if (flight.tickets.some(t => t.bet === bet.bet) || draft.outbox.some(t => t.bet === bet.bet)) continue;
+        const offered = terms(bet.meta);
+        if (
+          bet.group === flight.id &&
+          flight.phase === 'boarding' &&
+          offered &&
+          bet.uname &&
+          /^[1-9]\d*$/.test(bet.stake) &&
+          flight.tickets.length < MAX_CREW &&
+          !flight.tickets.some(t => t.uname === bet.uname)
+        )
+          flight.tickets.push({
+            bet: bet.bet,
+            uname: bet.uname,
+            alias: bet.alias,
+            stake: bet.stake,
+            ...offered,
+            status: 'aboard',
+            multiplier: null,
+            payout: null,
+            paid: false,
+          });
+        else {
+          // A stored flight fixes what a retry is paid. Bets outside its accepted crew get their stakes back.
+          const proof = bet.group ? await this.deps.kept(bet.group) : undefined,
+            known = proof?.tickets.find(t => t.bet === bet.bet);
+          draft.outbox.push({
+            bet: bet.bet,
+            player: known?.payout ?? bet.stake,
+            casino: known ? String(casinoShare(bet.stake)) : '0',
+          });
+        }
       }
-      bets.sort((a, b) => a.placedAt - b.placedAt || a.bet.localeCompare(b.bet));
-      await this.edit(async draft => {
-        const flight = draft.flight!;
-        for (const bet of bets) {
-          if (flight.tickets.some(t => t.bet === bet.bet) || draft.outbox.some(t => t.bet === bet.bet)) continue;
-          const offered = terms(bet.meta);
-          if (
-            bet.group === flight.id &&
-            flight.phase === 'boarding' &&
-            offered &&
-            bet.uname &&
-            /^[1-9]\d*$/.test(bet.stake) &&
-            flight.tickets.length < MAX_CREW &&
-            !flight.tickets.some(t => t.uname === bet.uname)
-          ) {
-            flight.tickets.push({
-              bet: bet.bet,
-              uname: bet.uname,
-              alias: bet.alias,
-              stake: bet.stake,
-              ...offered,
-              status: 'aboard',
-              multiplier: null,
-              payout: null,
-              paid: false,
-            });
-          } else {
-            // A stored flight fixes what a retry is paid. Bets outside its accepted crew get their stakes back.
-            const proof = bet.group ? await this.deps.kept(bet.group) : undefined;
-            const known = proof?.tickets.find(t => t.bet === bet.bet);
-            draft.outbox.push({
-              bet: bet.bet,
-              player: known?.payout ?? bet.stake,
-              casino: known ? String(casinoShare(bet.stake)) : '0',
-            });
-          }
+    });
+    this.cursor = page.cursor;
+    this.payLater();
+    return page.bets.length;
+  }
+
+  /** Pays what is owed without waiting for it: one that fails is tried again when the room next wakes. */
+  private payLater() {
+    this.pay().catch((error: Error) => console.error('Flight settlement:', error.message));
+  }
+
+  /** Settles every payout and stake owed, outside the queue, one settlement at a time: what comes to be owed meanwhile
+   * is settled after it. One that fails is tried again when the room next wakes. */
+  pay(): Promise<void> {
+    return (this.paying ??= (async () => {
+      try {
+        for (let payments = await this.edit(owed); payments.length; payments = await this.edit(owed)) {
+          const settled = await this.deps.developer.settle(payments);
+          await this.edit(draft => {
+            for (const requested of payments) {
+              const result = settled.find(r => r.bet === requested.bet);
+              if (
+                result?.status !== 'settled' ||
+                result.settlement?.player !== requested.player ||
+                result.settlement.casino !== requested.casino
+              )
+                throw new Error('The casino returned a different settlement.');
+              const ticket = draft.flight!.tickets.find(t => t.bet === requested.bet);
+              if (ticket) ticket.paid = true;
+              draft.outbox = draft.outbox.filter(p => p.bet !== requested.bet);
+            }
+          });
         }
-      });
-      const payments = await this.edit(draft => [
-        ...draft.flight!.tickets.filter(t => t.payout !== null && !t.paid).map(payment),
-        ...draft.outbox,
-      ]);
-      if (!payments.length) return;
-      const settled = await this.deps.developer.settle(payments);
-      await this.edit(draft => {
-        for (const result of settled) {
-          const requested = payments.find(p => p.bet === result.bet);
-          if (
-            !requested ||
-            result.status !== 'settled' ||
-            result.settlement?.player !== requested.player ||
-            result.settlement.casino !== requested.casino
-          )
-            throw new Error('The casino returned a different settlement.');
-          const ticket = draft.flight!.tickets.find(t => t.bet === result.bet);
-          if (ticket) ticket.paid = true;
-          draft.outbox = draft.outbox.filter(p => p.bet !== result.bet);
-        }
-      });
-    } finally {
-      // A failed settlement is tried again shortly.
-      if (underWay(this.state)) await this.deps.wake(this.deps.now() + 1_000);
-    }
+      } finally {
+        this.paying = null;
+      }
+    })());
   }
 }

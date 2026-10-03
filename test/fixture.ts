@@ -2,7 +2,7 @@ import { keccak256 } from 'ethers';
 import type { PublicDeveloperBet } from '@hookedin/play/sdk/developer';
 import { Room } from '../server/room.ts';
 import type { RoomDeps, RoomState } from '../server/room.ts';
-import type { FlightProof } from '../src/rules.ts';
+import type { FlightProof, FlightView } from '../src/rules.ts';
 
 export const TOKEN = '0x' + 'a'.repeat(64);
 export const SECRET = '0x' + 'c'.repeat(64);
@@ -12,13 +12,20 @@ export function fixture(secret = SECRET) {
     saved: RoomState | undefined,
     serial = 0;
   let loseReply = false,
-    failSave = false;
-  let pause: Promise<void> | null = null;
+    failSave = false,
+    failRead = false,
+    watching = false;
+  let pause: Promise<void> | null = null,
+    placed = () => {};
   const bets = new Map<string, PublicDeveloperBet>(),
-    proofs = new Map<string, FlightProof>();
+    proofs = new Map<string, FlightProof>(),
+    // Where each bet is in the order the casino took them.
+    order = new Map<string, number>();
   const settled: string[] = [],
     writes: RoomState[] = [],
-    wakes: number[] = [];
+    wakes: number[] = [],
+    shown: FlightView[] = [],
+    reads: { after: string; wait: number }[] = [];
   const deps: RoomDeps = {
     now: () => now,
     secret: () => (serial++ ? '0x' + serial.toString(16).padStart(64, '0') : secret),
@@ -34,8 +41,23 @@ export function fixture(secret = SECRET) {
     wake: async at => {
       wakes.push(at);
     },
+    show: view => void shown.push(view),
+    watched: () => watching,
     developer: {
-      bets: async () => ({ bets: [...bets.values()].filter(b => b.status === 'open'), cursor: '', more: false }),
+      // Open bets in the order they were placed, after the cursor; with `wait`, a read with none waits for the next.
+      async bets({ after = '', wait = 0 } = {}) {
+        reads.push({ after, wait });
+        if (failRead) {
+          failRead = false;
+          throw new Error('Casino unavailable');
+        }
+        const page = () => {
+          const open = [...bets.values()].filter(b => b.status === 'open' && order.get(b.bet)! > Number(after || '0'));
+          return { bets: open, cursor: String(order.get(open.at(-1)?.bet ?? '') ?? (after || '0')), more: false };
+        };
+        if (wait && !page().bets.length) await new Promise<void>(resolve => (placed = resolve));
+        return page();
+      },
       settle: async payments => {
         if (pause) await pause;
         const results = payments.map(p => {
@@ -59,6 +81,19 @@ export function fixture(secret = SECRET) {
     settled,
     writes,
     wakes,
+    shown,
+    reads,
+    /** Whether a page watches the room. One that stops watching ends a read the room is waiting on. */
+    watch: (value: boolean) => {
+      watching = value;
+      if (!value) placed();
+    },
+    /** The casino answers the read the room is waiting on, with no bet: another wait on the game began. */
+    answer: () => placed(),
+    /** The casino fails the room's next read. */
+    failNextRead: () => {
+      failRead = true;
+    },
     get room() {
       return room;
     },
@@ -100,6 +135,8 @@ export function fixture(secret = SECRET) {
         ...overrides,
       };
       bets.set(bet.bet, bet);
+      order.set(bet.bet, order.size + 1);
+      placed();
       return bet;
     },
   };

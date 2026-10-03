@@ -27,7 +27,10 @@ export async function startHarness({
 }: { port?: number; secret?: string; clock?: () => number } = {}) {
   const pilots = new Map<string, Pilot>(),
     owner = new Map<string, Pilot>(),
-    proofs = new Map<string, FlightProof>();
+    proofs = new Map<string, FlightProof>(),
+    // Every bet in the order this host first saw it, as the casino orders the bets it took, and every page watching.
+    order = new Map<string, number>(),
+    pages = new Set<http.ServerResponse>();
   let offset = 0,
     nextSecret = 0;
   const now = () => clock() + offset;
@@ -42,7 +45,12 @@ export async function startHarness({
       proofs.set(proof.id, structuredClone(proof));
     },
     kept: async id => proofs.get(id),
+    // The host ticks the room itself, and reads the bets each time.
     wake: async () => {},
+    show: view => {
+      for (const page of pages) page.write(`data: ${JSON.stringify(view)}\n\n`);
+    },
+    watched: () => pages.size > 0,
     developer: {
       async bets({ after = '' } = {}) {
         const all: PublicDeveloperBet[] = [];
@@ -50,13 +58,19 @@ export async function startHarness({
           const page = await pilot.fixture.developer.bets();
           for (const bet of page.bets) {
             owner.set(bet.bet, pilot);
+            if (!order.has(bet.bet)) order.set(bet.bet, order.size + 1);
             all.push({ ...bet, alias: pilot.name });
           }
         }
-        all.sort((a, b) => a.bet.localeCompare(b.bet));
-        const eligible = all.filter(bet => bet.bet > after),
+        const eligible = all
+            .filter(bet => order.get(bet.bet)! > Number(after || '0'))
+            .sort((a, b) => order.get(a.bet)! - order.get(b.bet)!),
           bets = eligible.slice(0, 100);
-        return { bets, cursor: bets.at(-1)?.bet ?? after, more: eligible.length > 100 };
+        return {
+          bets,
+          cursor: String(bets.length ? order.get(bets.at(-1)!.bet) : after || '0'),
+          more: eligible.length > 100,
+        };
       },
       async settle(payments) {
         const results: PublicDeveloperBet[] = [];
@@ -70,8 +84,8 @@ export async function startHarness({
   });
   const timer = setInterval(() => {
     void room
-      .view()
-      .then(() => room.sync())
+      .read()
+      .then(() => room.tick())
       .catch(console.error);
   }, 150);
   const hostScript = `
@@ -152,21 +166,19 @@ export async function startHarness({
       }
       if (url.pathname.startsWith('/game/api/')) {
         const route = url.pathname.slice('/game/api'.length);
-        if (route === '/flight') {
-          const view = await room.view();
-          void room.sync().catch(console.error);
-          return void json(view);
-        }
-        if (route === '/placed' && req.method === 'POST') {
-          await room.sync(true);
-          return void json(await room.view());
+        if (route === '/live') {
+          res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store' });
+          res.write('retry: 1000\n\n');
+          pages.add(res);
+          req.once('close', () => pages.delete(res));
+          return void res.write(`data: ${JSON.stringify(await room.view())}\n\n`);
         }
         if (route === '/cashout' && req.method === 'POST') {
           let text = '';
           for await (const chunk of req) text += chunk;
           const body = JSON.parse(text),
             result = await room.cashout(body.flight, body.bet, body.token);
-          void room.sync(true).catch(console.error);
+          void room.pay().catch(console.error);
           return void json(result);
         }
         if (route.startsWith('/flights/')) {
@@ -217,8 +229,8 @@ export async function startHarness({
     pilots,
     async advance(ms: number) {
       offset += ms;
-      await room.view();
-      await room.sync(true);
+      await room.read();
+      await room.tick();
     },
     async close() {
       clearInterval(timer);

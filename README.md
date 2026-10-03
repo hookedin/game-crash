@@ -77,13 +77,17 @@ Room changes are serialized and persisted before acknowledgement. A failed write
 in-memory decision. Casino reads and settlements run outside that queue, so a slow casino request does not block
 cash-outs. The room saves payouts before settling them; retries send identical amounts. Alarms resolve auto targets
 at their scheduled multiplier even when they wake after the crash. Flights fly on the clock: a flight nobody boarded
-costs nothing, and whoever looks next finds the room where the clock has it. The room keeps its alarm only while
-somebody is aboard or a payment is owed. The next flight waits until all payouts have been settled. Flights that had a
-crew remain at `/api/flights/<id>`.
+costs nothing, and whoever looks next finds the room where the clock has it. While a page watches or somebody is aboard
+or owed, the room sets its alarm for the flight's next change (take-off, an auto escape, the crash, the next flight);
+otherwise it lets it lapse. The next flight waits until all payouts have been settled. Flights that had a crew remain at
+`/api/flights/<id>`.
 
-Pages poll the room every 500 ms and animate locally. The room refreshes open casino bets at most once per second,
-with an immediate refresh after a bet or cash-out. A page whose room snapshot is stale pauses its controls. Only actual
-accepted bets appear in the crew; there are no invented players.
+Pages watch the room at `/api/live`, a stream of server-sent events: the room as it stands, each change as it happens,
+and the room every 3 seconds while nothing changes. They animate locally between events. While a page watches, the room
+follows the casino's bets: the casino holds each read until a bet on the game is placed, so a seat shows as soon as the
+wallet has placed it. A page that hears nothing for 7 seconds pauses its controls and connects again. A page asks its
+wallet about its bet once the room shows it paid or given back. Only actual accepted bets appear in the crew; there are
+no invented players.
 
 ## Run against HookedIn
 

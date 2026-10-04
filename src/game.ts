@@ -539,6 +539,13 @@ function animate(time: number) {
 }
 
 async function start() {
+  // A seat is a developer bet: the player allows them in the dialog the wallet offers as the game opens, not while a
+  // flight boards.
+  void HookedIn.allowance()
+    .then(async current => {
+      if (!current.developerBets) await HookedIn.requestAllowance({ developerBets: true });
+    })
+    .catch(() => {});
   try {
     const startup = await HookedIn.initializeGame({ stakeInput: stake });
     uname = startup.wallet.uname;

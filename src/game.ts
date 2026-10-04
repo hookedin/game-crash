@@ -115,7 +115,7 @@ function setView(next: FlightView) {
     announced.add(ticket.bet);
     if (next.phase === 'flying')
       toast(
-        `${ticket.uname === uname ? 'You' : ticket.alias ? '@' + ticket.alias : '~' + ticket.uname} escaped at ${multiplierText(ticket.multiplier!)}`,
+        `${ticket.uname === uname ? 'You' : ticket.discordUsername ? '@' + ticket.discordUsername : '~' + ticket.uname} escaped at ${multiplierText(ticket.multiplier!)}`,
       );
   }
   seat();
@@ -165,7 +165,7 @@ function renderCrew() {
       row.className = 'crew-row';
       row.dataset.state = ticket.status;
       const pilot = cell('', 'pilot');
-      pilot.append(cell(ticket.alias ? '@' + ticket.alias : '~' + ticket.uname, 'name'));
+      pilot.append(cell(ticket.discordUsername ? '@' + ticket.discordUsername : '~' + ticket.uname, 'name'));
       if (ticket.uname === uname) pilot.append(cell('YOU', 'you'));
       row.append(
         pilot,

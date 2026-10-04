@@ -315,7 +315,7 @@ export class Room {
           flight.tickets.push({
             bet: bet.bet,
             uname: bet.uname,
-            alias: bet.alias,
+            discordUsername: bet.discordUsername,
             stake: bet.stake,
             ...offered,
             status: 'aboard',

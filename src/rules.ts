@@ -56,7 +56,7 @@ type TicketStatus = 'aboard' | 'escaped' | 'lost';
 export interface PublicTicket {
   bet: string;
   uname: string;
-  alias: string | null;
+  discordUsername: string | null;
   stake: string;
   auto: number | null;
   status: TicketStatus;

@@ -59,7 +59,7 @@ export async function startHarness({
           for (const bet of page.bets) {
             owner.set(bet.bet, pilot);
             if (!order.has(bet.bet)) order.set(bet.bet, order.size + 1);
-            all.push({ ...bet, alias: pilot.name });
+            all.push({ ...bet, discordUsername: pilot.name });
           }
         }
         const eligible = all
@@ -119,7 +119,7 @@ export async function startHarness({
         const name =
           ['nova', 'orbit', 'comet', 'luna', 'cosmo'][pilots.size % 5]! + (pilots.size >= 5 ? pilots.size : '');
         fixture.wallet.openGame(fixture.identity());
-        fixture.wallet.alias = name;
+        fixture.wallet.discordUsername = name;
         const pilot: Pilot = { fixture, name, events: [], queue: Promise.resolve() };
         fixture.bridge.onReceipt(receipt => {
           pilot.events.push(receipt);

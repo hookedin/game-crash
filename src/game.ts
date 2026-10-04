@@ -226,7 +226,7 @@ function plan() {
     const value = HookedIn.parseAmount(stake.value),
       at = Math.round(Number(target.value) * 100);
     if (!(at >= 101 && at <= MAX_MULTIPLIER)) return '';
-    return `Profit ${amount(payoutAt(value, at) - BigInt(value))} µETH at ${multiplierText(at)}`;
+    return `Profit ${amount(payoutAt(value, at) - BigInt(value))} METH at ${multiplierText(at)}`;
   } catch {
     return '';
   }
@@ -235,7 +235,7 @@ function plan() {
 /** The escape button follows the rocket: the multiplier, and what escaping now pays. */
 function showEscape(multiplier: number) {
   $('action-label').textContent = `Escape ${multiplierText(multiplier)}`;
-  $('action-detail').textContent = `${amount(payoutAt(saved!.stake, multiplier))} µETH`;
+  $('action-detail').textContent = `${amount(payoutAt(saved!.stake, multiplier))} METH`;
 }
 
 function render() {
@@ -349,17 +349,17 @@ async function receive(receipt: GameReceipt) {
     void HookedIn.end(pending.flight).catch(() => {});
     if (paid !== expected) {
       proofFault = true;
-      throw new Error(`The wallet received ${amount(paid)} µETH; this flight owes ${amount(expected)} µETH.`);
+      throw new Error(`The wallet received ${amount(paid)} METH; this flight owes ${amount(expected)} METH.`);
     }
     saved = null;
     persist();
-    if (!ticket) message(`Your seat was not accepted. ${amount(paid)} µETH refunded.`);
+    if (!ticket) message(`Your seat was not accepted. ${amount(paid)} METH refunded.`);
     else if (ticket.status === 'escaped') {
-      message(`Escaped at ${multiplierText(ticket.multiplier!)}. ${amount(paid)} µETH is in your balance.`);
-      toast(`Escaped at ${multiplierText(ticket.multiplier!)} · +${amount(paid - BigInt(pending.stake))} µETH`);
+      message(`Escaped at ${multiplierText(ticket.multiplier!)}. ${amount(paid)} METH is in your balance.`);
+      toast(`Escaped at ${multiplierText(ticket.multiplier!)} · +${amount(paid - BigInt(pending.stake))} METH`);
       sky.celebrate();
       sound.melody([440, 554, 659, 880], 0.08, { gain: 0.055 });
-    } else message(`The rocket crashed before you escaped. ${amount(pending.stake)} µETH lost.`);
+    } else message(`The rocket crashed before you escaped. ${amount(pending.stake)} METH lost.`);
   } catch (error: any) {
     message(error.message, true);
   } finally {

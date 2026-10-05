@@ -119,6 +119,8 @@ export async function startHarness({
         const name =
           ['nova', 'orbit', 'comet', 'luna', 'cosmo'][pilots.size % 5]! + (pilots.size >= 5 ? pilots.size : '');
         fixture.wallet.openGame(fixture.identity());
+        // The pilot allows the game the whole balance, developer bets included, as a player does in the top bar.
+        await fixture.wallet.setGameAllowance(String(fixture.wallet.playableBalance()), true);
         fixture.wallet.discordUsername = name;
         const pilot: Pilot = { fixture, name, events: [], queue: Promise.resolve() };
         fixture.bridge.onReceipt(receipt => {

@@ -396,17 +396,15 @@ async function join() {
       chosen > MAX_MULTIPLIER)
   )
     throw new Error('Choose an auto escape from 1.01× to 100×, with up to two decimal places.');
-  // A seat is a developer bet, which the player allows apart from the casino's.
-  const current = await HookedIn.allowance(),
-    short = BigInt(value) - BigInt(current.allowance);
-  if (short > 0n || !current.developerBets) {
-    const answer = await HookedIn.requestAllowance({ amount: short > 0n ? short : undefined, developerBets: true });
-    if (BigInt(answer.allowance) < BigInt(value) || !answer.developerBets)
-      throw new Error('Allow this game to bet this seat with its developer, or deposit if your balance is empty.');
-  }
-  // The wallet's dialog can outlast boarding. Check the room again before saving or signing anything.
+  // A seat is a developer bet, which the player allows apart from the casino's, with the allowance in the wallet's top
+  // bar.
+  const current = await HookedIn.allowance();
+  if (BigInt(current.allowance) < BigInt(value))
+    throw new Error('Not enough allowance for this bet. Set it in the top bar.');
+  if (!current.developerBets) throw new Error('Allow developer bets with the allowance in the top bar.');
+  // Check the room again before saving or signing anything.
   if (!fresh() || view.phase !== 'boarding' || view.startsAt - serverNow() < 1_000)
-    throw new Error('Boarding closed while your wallet was open. Join the next flight.');
+    throw new Error('Boarding has closed. Join the next flight.');
   saved = {
     id: crypto.randomUUID(),
     flight: view.id,
@@ -539,13 +537,8 @@ function animate(time: number) {
 }
 
 async function start() {
-  // A seat is a developer bet: the player allows them in the dialog the wallet offers as the game opens, not while a
-  // flight boards.
-  void HookedIn.allowance()
-    .then(async current => {
-      if (!current.developerBets) await HookedIn.requestAllowance({ developerBets: true });
-    })
-    .catch(() => {});
+  // A seat is a developer bet: the allowance dialog the player opens from the wallet's top bar asks about them too.
+  void HookedIn.placesDeveloperBets().catch(() => {});
   try {
     const startup = await HookedIn.initializeGame({ stakeInput: stake });
     uname = startup.wallet.uname;

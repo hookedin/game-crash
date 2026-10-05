@@ -127,7 +127,6 @@ export function fixture(secret = SECRET) {
         group: view.id,
         uname: `pilot-${bets.size + 1}`,
         discordUsername: null,
-        developer: 'developer',
         stake: '10000',
         placedAt: now,
         status: 'open',

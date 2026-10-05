@@ -39,10 +39,10 @@ back; betting through the wallet alone does not establish that the room accepted
 
 ## Money and trust
 
-Every seat is one `HookedIn.developerBet`. Its stake goes into the game's developer bank at the casino. The server
-settles it with `createDeveloper().settle`; a casino bet does not back this game. Fund the developer's bank before
-offering it to players. Capacity and payment are the developer's responsibility, as in HookedIn's developer-bet model.
-The server gives the casino `stake / 200`, rounded down, on each accepted bet's settlement, from the developer bank.
+Every seat is one `HookedIn.developerBet`. Its stake goes into the game's bank at the casino. The server settles it with
+`createDeveloper().settle`; a casino bet does not back this game. Fund the game's bank before offering it to players.
+Capacity and payment are the developer's responsibility, as in HookedIn's developer-bet model. The server gives the
+casino `stake / 200`, rounded down, on each accepted bet's settlement, from the game's bank.
 Returned bets give the casino nothing. This is not an additional player charge.
 
 The server generates a 32-byte secret and saves it before publishing its Keccak-256 hash as the flight ID. Each wallet
@@ -91,14 +91,15 @@ no invented players.
 
 ## Run against HookedIn
 
-Publish the game as `crash`, with this Worker's URL, on **Developer** in the wallet of the account whose key the Worker
-holds as `DEVELOPER_KEY`: publishing makes that account the game's developer. A developer bet needs a published game;
-opening the game by its URL alone does not publish it.
+Publish the game as `crash`, with this Worker's URL, on **Developer** in your wallet: publishing makes your account the
+game's developer. A developer bet needs a published game; opening the game by its URL alone does not publish it. The
+Worker names the game by its key, `GAME`, which the **Developer** page shows beside it, and signs with the game's server
+key, `SERVER_KEY`: a key you make for the Worker and name there, which spends the game's bank on its settlements and
+nothing else. Until you name one, the server key is your account's own.
 
-For local Worker development, put `DEVELOPER_KEY` in `.dev.vars`, point `CASINO_URL` in `wrangler.jsonc` at the chosen
-casino and run `npm run dev`. The page is served at `http://127.0.0.1:8791/`. Publish that URL from the matching
-developer account in the chosen wallet and open the published game there. The Worker needs the key of the account
-that published it, and holds that account's bank and game authority.
+For local Worker development, put `GAME` and `SERVER_KEY` in `.dev.vars`, point `CASINO_URL` in `wrangler.jsonc` at the
+chosen casino and run `npm run dev`. The page is served at `http://127.0.0.1:8791/`. Publish that URL in the chosen
+wallet and open the published game there.
 
 ## Test
 
@@ -116,11 +117,12 @@ cash-out through reload, wallet receipt collection, proof checking and mobile ov
 ## Deploy
 
 1. Set the Worker name and route in `wrangler.jsonc`.
-2. Set `DEVELOPER_KEY` with `npx wrangler secret put DEVELOPER_KEY`.
+2. Publish the Worker's URL as `crash`, set `GAME` in `wrangler.jsonc` to its key, make a server key, name it beside the
+   game on **Developer** and set it with `npx wrangler secret put SERVER_KEY`.
 3. In the repository's Actions settings, add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
 4. Push to `main`. The workflow tests, builds and deploys, on play's newest `main`, and commits the lockfile it tested;
    play's release runs it whenever its `main` moves.
-5. Publish the Worker's URL as `crash` from the account whose key it holds, and fund the developer bank.
+5. Fund the game's bank on **Developer**.
 
 `npx wrangler deploy` publishes by hand. It is served at `https://crash-game.hookedin.com/`.
 

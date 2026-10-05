@@ -7,8 +7,10 @@ interface Env {
   ASSETS: Fetcher;
   FLIGHTS: DurableObjectNamespace;
   CASINO_URL: string;
-  GAME_NAME: string;
-  DEVELOPER_KEY: string;
+  /** The game's key, which the wallet's Developer page shows beside the game. */
+  GAME: string;
+  /** The private key of the game's server, which its developer names on the Developer page. A secret. */
+  SERVER_KEY: string;
 }
 const json = (value: unknown, status = 200) =>
   Response.json(value, { status, headers: { 'Cache-Control': 'no-store' } });
@@ -35,8 +37,8 @@ export class CrashRoom implements DurableObject {
         {
           developer: await createDeveloper({
             casinoURL: this.env.CASINO_URL,
-            key: this.env.DEVELOPER_KEY,
-            name: this.env.GAME_NAME,
+            key: this.env.SERVER_KEY,
+            game: this.env.GAME,
           }),
           now: () => Date.now(),
           secret: () =>

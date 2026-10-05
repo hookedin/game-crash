@@ -118,8 +118,8 @@ cash-out through reload, wallet receipt collection, proof checking and mobile ov
 1. Set the Worker name and route in `wrangler.jsonc`.
 2. Set `DEVELOPER_KEY` with `npx wrangler secret put DEVELOPER_KEY`.
 3. In the repository's Actions settings, add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
-4. Push to `main`. The workflow tests, builds and deploys, on play's newest `main`; play's release runs it whenever its
-   `main` moves.
+4. Push to `main`. The workflow tests, builds and deploys, on play's newest `main`, and commits the lockfile it tested;
+   play's release runs it whenever its `main` moves.
 5. Publish the Worker's URL as `crash` from the account whose key it holds, and fund the developer bank.
 
 `npx wrangler deploy` publishes by hand. It is served at `https://crash-game.hookedin.com/`.

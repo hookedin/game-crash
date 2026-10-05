@@ -8,7 +8,7 @@ mobile layouts, durable cash-out decisions and recent crash points that each che
 
 ## Try it locally
 
-Node 24.4 or later:
+Node 26 or later:
 
 ```sh
 npm ci

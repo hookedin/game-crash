@@ -91,7 +91,7 @@ no invented players.
 
 ## Run against HookedIn
 
-Publish the game as `crash`, with this Worker's URL, on **My games** in the wallet of the account whose key the Worker
+Publish the game as `crash`, with this Worker's URL, on **Developer** in the wallet of the account whose key the Worker
 holds as `DEVELOPER_KEY`: publishing makes that account the game's developer. A developer bet needs a published game;
 opening the game by its URL alone does not publish it.
 

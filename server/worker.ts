@@ -7,7 +7,7 @@ interface Env {
   ASSETS: Fetcher;
   FLIGHTS: DurableObjectNamespace;
   CASINO_URL: string;
-  /** The game's key, which the wallet's Developer page shows beside the game. */
+  /** The game's ID, which the wallet's Developer page shows beside the game. */
   GAME: string;
   /** The private key of the game's server, which its developer names on the Developer page. A secret. */
   SERVER_KEY: string;

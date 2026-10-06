@@ -46,7 +46,7 @@ function fixture(t: any) {
   } as unknown as DurableObjectState;
   const env = {
     CASINO_URL: 'https://casino.test',
-    GAME: `0x${'39'.repeat(32)}`,
+    GAME: '0199a1b2-c3d4-7e5f-8a6b-39393939393a',
     SERVER_KEY: Wallet.createRandom().privateKey,
   } as never;
   let room = new CrashRoom(ctx, env);

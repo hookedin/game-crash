@@ -93,7 +93,7 @@ no invented players.
 
 Publish the game as `crash`, with this Worker's URL, on **Developer** in your wallet: publishing makes your account the
 game's developer. A developer bet needs a published game; opening the game by its URL alone does not publish it. The
-Worker names the game by its key, `GAME`, which the **Developer** page shows beside it, and signs with the game's server
+Worker names the game by its ID, `GAME`, which the **Developer** page shows beside it, and signs with the game's server
 key, `SERVER_KEY`: a key you make for the Worker and name there, which spends the game's bank on its settlements and
 nothing else. Until you name one, the server key is your account's own.
 
@@ -117,7 +117,7 @@ cash-out through reload, wallet receipt collection, proof checking and mobile ov
 ## Deploy
 
 1. Set the Worker name and route in `wrangler.jsonc`.
-2. Publish the Worker's URL as `crash`, set `GAME` in `wrangler.jsonc` to its key, make a server key, name it beside the
+2. Publish the Worker's URL as `Crash`, set `GAME` in `wrangler.jsonc` to its ID, make a server key, name it beside the
    game on **Developer** and set it with `npx wrangler secret put SERVER_KEY`.
 3. In the repository's Actions settings, add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
 4. Push to `main`. The workflow tests, builds and deploys, on play's newest `main`, and commits the lockfile it tested;

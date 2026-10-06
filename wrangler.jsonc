@@ -1,4 +1,4 @@
-// Page and flight room share one origin. GAME is the game's key; set its server key with `wrangler secret put SERVER_KEY`.
+// Page and flight room share one origin. GAME is the game's ID; set its server key with `wrangler secret put SERVER_KEY`.
 {
   "name": "hookedin-crash-game",
   "main": "server/worker.ts",
@@ -9,7 +9,7 @@
   "migrations": [{ "tag": "init", "new_sqlite_classes": ["CrashRoom"] }],
   "vars": {
     "CASINO_URL": "https://casino.hookedin.com",
-    "GAME": "0x5d5975853e34791429f822aa446d598e912db1cd66b50fc2ec48fc7a7075dc9c",
+    "GAME": "01a10f9a-871f-7004-b927-7e286d073c43",
   },
   "routes": [{ "pattern": "crash-game.hookedin.com", "custom_domain": true }],
   "build": { "command": "npm run build", "watch_dir": "src" },

@@ -400,7 +400,7 @@ async function join() {
   // bar.
   const current = await HookedIn.allowance();
   if (BigInt(current.allowance) < BigInt(value))
-    throw new Error('Not enough allowance for this bet. Set it in the top bar.');
+    throw new Error('Not enough allowance for this bet. Set one, or deposit, in the top bar.');
   if (!current.developerBets) throw new Error('Allow developer bets with the allowance in the top bar.');
   // Check the room again before saving or signing anything.
   if (!fresh() || view.phase !== 'boarding' || view.startsAt - serverNow() < 1_000)

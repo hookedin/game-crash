@@ -1,21 +1,26 @@
 # Every push tests and builds; a push to main publishes the page and the flight room to Cloudflare, given the
 # CLOUDFLARE_API_TOKEN secret and the CLOUDFLARE_ACCOUNT_ID variable. The Worker's SERVER_KEY secret is set once
 # with `npx wrangler secret put SERVER_KEY`; a deploy keeps it.
+# The tests run the dependencies' code, so they hold no secret and a token that cannot write. Only the release job, on
+# main, holds those: it installs without install scripts, runs no test, and builds again what the tests passed.
 name: Deploy
 on: [push, workflow_dispatch]
 # One run per branch at a time, each from the branch as it stands, so a run queued behind another can push the lockfile.
 concurrency: deploy-${{ github.ref }}
 jobs:
-  deploy:
+  test:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      contents: read
+    outputs:
+      commit: ${{ steps.checkout.outputs.commit }}
+      play: ${{ steps.play.outputs.play }}
     steps:
       - uses: actions/checkout@v7
+        id: checkout
         with:
           ref: ${{ github.ref }}
+          persist-credentials: false
       - uses: actions/setup-node@v7
         with:
           node-version: 26
@@ -23,21 +28,49 @@ jobs:
       - run: npm ci
       # Every build takes play's newest main, and play's release runs this workflow when main moves.
       - run: npm update @hookedin/play
+      - id: play
+        run: echo "play=$(node -p "require('./package-lock.json').packages['node_modules/@hookedin/play'].resolved")" >> "$GITHUB_OUTPUT"
       - run: npm run format:check
       - run: npm test
+  release:
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      # Whether the token is set, not the token: only the step that publishes is given it.
+      PUBLISH: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.test.outputs.commit }}
+      # No npm cache: the test job, which runs the dependencies' code, writes it.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+      - run: npm ci --ignore-scripts
+      # The play the tests ran on; if play moved since, this run stops, and the run play's release started releases it.
+      - name: Take the play the tests ran on
+        env:
+          TESTED: ${{ needs.test.outputs.play }}
+        run: |
+          npm update @hookedin/play --ignore-scripts
+          [ "$(node -p "require('./package-lock.json').packages['node_modules/@hookedin/play'].resolved")" = "$TESTED" ] ||
+            { echo '::error::play moved during this run; the run its release started releases it'; exit 1; }
       # main's lockfile names the play this run tested, so a clone installs it. A push with the workflow's token starts no
       # run of its own.
       - name: Record play in the lockfile
-        if: github.ref == 'refs/heads/main'
         run: |
           git diff --quiet package-lock.json && exit 0
           play=$(node -p "require('./package-lock.json').packages['node_modules/@hookedin/play'].resolved.split('#')[1].slice(0, 7)")
           git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
             commit -m "Update play to $play" -- package-lock.json
           git push origin HEAD:main
+      # wrangler.jsonc builds the page first.
       - name: Publish to Cloudflare
-        if: github.ref == 'refs/heads/main' && env.CLOUDFLARE_API_TOKEN != ''
-        uses: cloudflare/wrangler-action@v4
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        if: env.PUBLISH == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler deploy

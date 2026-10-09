@@ -9,7 +9,7 @@
   "migrations": [{ "tag": "init", "new_sqlite_classes": ["CrashRoom"] }],
   "vars": {
     "CASINO_URL": "https://casino.hookedin.com",
-    "GAME": "01a11f58-0d28-7002-ba4b-e01d1299cf3a",
+    "GAME": "01a11fee-467a-7003-9f68-d6589a9dbc04",
   },
   "routes": [{ "pattern": "crash-game.hookedin.com", "custom_domain": true }],
   "build": { "command": "npm run build", "watch_dir": "src" },

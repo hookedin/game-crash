@@ -33,6 +33,9 @@ test('payouts use integer amounts; auto targets and secrets are strictly validat
     assert.equal(terms({ escapeHash: SECRET, auto }), null);
   assert.deepEqual(terms({ escapeHash: SECRET, auto: 200 }), { escapeHash: SECRET, auto: 200 });
   assert.equal(terms({ escapeHash: 'secret', auto: null }), null);
+  // A ticket's meta is exactly its escape hash and its target: nothing missing, nothing riding along.
+  assert.equal(terms({ escapeHash: SECRET }), null);
+  assert.equal(terms({ escapeHash: SECRET, auto: null, note: 'extra' }), null);
   assert.throws(() => commitment('bad'));
 });
 

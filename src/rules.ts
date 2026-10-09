@@ -42,7 +42,7 @@ interface TicketTerms {
 }
 
 export function terms(meta: Record<string, unknown>): TicketTerms | null {
-  if (!isSecret(meta.escapeHash)) return null;
+  if (Object.keys(meta).length !== 2 || !isSecret(meta.escapeHash) || !Object.hasOwn(meta, 'auto')) return null;
   if (
     meta.auto !== null &&
     (!Number.isSafeInteger(meta.auto) || Number(meta.auto) < 101 || Number(meta.auto) > MAX_MULTIPLIER)

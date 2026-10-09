@@ -302,13 +302,17 @@ export class Room {
       const flight = draft.flight!;
       for (const bet of page.bets) {
         if (flight.tickets.some(t => t.bet === bet.bet) || draft.outbox.some(t => t.bet === bet.bet)) continue;
+        // A stake is a whole amount above zero, as the casino writes it: anything else is neither seated nor paid back.
+        if (!/^[1-9]\d*$/.test(bet.stake)) {
+          console.error('Flight bets: a stake in another form', bet.bet);
+          continue;
+        }
         const offered = terms(bet.meta);
         if (
           bet.group === flight.id &&
           flight.phase === 'boarding' &&
           offered &&
           bet.uname &&
-          /^[1-9]\d*$/.test(bet.stake) &&
           flight.tickets.length < MAX_CREW &&
           !flight.tickets.some(t => t.uname === bet.uname)
         )

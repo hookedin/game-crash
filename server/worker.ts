@@ -92,16 +92,28 @@ export class CrashRoom implements DurableObject {
         room = await this.open();
       if (url.pathname === '/api/live' && request.method === 'GET') return await this.watch(room);
       if (url.pathname === '/api/cashout' && request.method === 'POST') {
-        const text = await request.text();
-        if (text.length > 1024) throw new GameError('Request too large.', 413);
+        // Read no further than a cash-out takes.
+        let text = '';
+        const decoder = new TextDecoder();
+        for await (const chunk of request.body ?? []) {
+          text += decoder.decode(chunk, { stream: true });
+          if (text.length > 1024) throw new GameError('Request too large.', 413);
+        }
         let body: any;
         try {
-          body = JSON.parse(text);
+          body = JSON.parse(text + decoder.decode());
         } catch {
           throw new GameError('Invalid JSON.', 400);
         }
-        if (!body || typeof body.flight !== 'string' || typeof body.bet !== 'string' || typeof body.token !== 'string')
-          throw new GameError('Name the flight, bet and escape key.', 400);
+        if (
+          !body ||
+          typeof body !== 'object' ||
+          Object.keys(body).length !== 3 ||
+          typeof body.flight !== 'string' ||
+          typeof body.bet !== 'string' ||
+          typeof body.token !== 'string'
+        )
+          throw new GameError('Name the flight, bet and escape key, and nothing else.', 400);
         const ticket = await room.cashout(body.flight, body.bet, body.token);
         this.ctx.waitUntil(room.pay().catch(error => console.error('Flight settlement:', error.message)));
         return json(ticket);

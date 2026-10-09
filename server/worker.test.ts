@@ -124,6 +124,10 @@ test('startup recovers when the casino returns, and malformed or unauthenticated
   assert.equal((await x.post('{')).status, 400);
   assert.equal((await x.post('{}')).status, 400);
   assert.equal((await x.post(' '.repeat(1025))).status, 413);
+  assert.equal(
+    (await x.post(JSON.stringify({ flight: 'wrong', bet: 'wrong', token: 'wrong', more: 'riding along' }))).status,
+    400,
+  );
   assert.equal((await x.post(JSON.stringify({ flight: 'wrong', bet: 'wrong', token: 'wrong' }))).status, 403);
   await Promise.all(x.background);
 });

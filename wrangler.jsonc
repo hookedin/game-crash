@@ -1,0 +1,22 @@
+// Page and flight room share one origin. GAME is the game's ID; set its server key with `wrangler secret put SERVER_KEY`.
+{
+  "name": "hookedin-crash-game",
+  "main": "server/worker.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": { "directory": "dist", "binding": "ASSETS", "run_worker_first": ["/api/*"] },
+  "durable_objects": { "bindings": [{ "name": "FLIGHTS", "class_name": "CrashRoom" }] },
+  "migrations": [{ "tag": "init", "new_sqlite_classes": ["CrashRoom"] }],
+  "vars": {
+    "CASINO_URL": "https://casino.hookedin.com",
+    "GAME": "01a132ba-402f-7000-a255-70a572487214",
+    // The flights' chain, set by the ceremony in README; the room refuses to fly until it is. CHAIN_END and CHAIN_BLOCK
+    // are pushed together before that block is mined, and CHAIN_SALT is its hash.
+    "CHAIN_END": "0xf0ce6bf1d8386d30a0bc1d62237f97acd42388de41c1f3fe4b59f332176f70f6",
+    "CHAIN_BLOCK": "11891376",
+    "CHAIN_SALT": "0x728f60f339bfca1235078132db96d9982dca5e723cecf3e8ffcae83fb91055e7",
+  },
+  "routes": [{ "pattern": "crash-game.hookedin.com", "custom_domain": true }],
+  "build": { "command": "npm run build", "watch_dir": "src" },
+  "dev": { "port": 8791, "ip": "127.0.0.1", "host": "127.0.0.1:8791", "upstream_protocol": "http" },
+}

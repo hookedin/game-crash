@@ -1,0 +1,55 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { keccak256 } from 'ethers';
+import { gameWallet } from '@hookedin/play/testing/game-wallet.ts';
+import { Room } from '../server/room.ts';
+import { crashPoint, timeTo } from '../src/rules.ts';
+import { CHAIN, TOKEN, secretOf } from './fixture.ts';
+
+test('the actual SDK wallet signs a flight bet, verifies the developer’s settlement and credits the exact escape payout', async () => {
+  const x = await gameWallet();
+  x.wallet.openGame(x.identity());
+  // A seat is a developer bet, which the player allows apart.
+  await x.wallet.setGameAllowance(100000n, true);
+  let now = Date.now();
+  const room = new Room({
+    developer: x.developer,
+    chain: CHAIN,
+    secret: secretOf,
+    now: () => now,
+    save: async () => {},
+    keep: async () => {},
+    kept: async () => undefined,
+    wake: async () => {},
+    show: () => {},
+    watched: () => false,
+  });
+  const flight = await room.view();
+  const receipt = await x.bridge.call('game.developerBet', {
+    id: 'flight-seat',
+    stake: 10000n,
+    group: flight.id,
+    round: '0x' + flight.id,
+    meta: { escapeHash: keccak256(TOKEN), auto: 200 },
+  });
+  assert.equal(receipt.status, 'open');
+  assert.equal((await x.bridge.call('game.allowance')).allowance, 90000n);
+  await room.read();
+  now = (await room.view()).startsAt + timeTo(200);
+  await room.tick();
+  await room.pay();
+  assert.equal((await x.bridge.call('game.receipt', { id: 'flight-seat' })).status, 'open', 'until the crash');
+  now = (await room.view()).startsAt + timeTo(crashPoint(secretOf(1), CHAIN.salt));
+  await room.tick();
+  await room.pay();
+  await x.wallet.collectPayouts();
+  const paid = await x.bridge.call('game.receipt', { id: 'flight-seat' });
+  assert.equal(paid.status, 'settled');
+  assert.equal(paid.payout, 20000n);
+  // What the escape paid waits in the flight's group until the page has shown it.
+  assert.equal((await x.bridge.call('game.allowance')).allowance, 90000n);
+  await x.bridge.call('game.end', { group: flight.id });
+  assert.equal((await x.bridge.call('game.allowance')).allowance, 110000n);
+  assert.equal(await x.wallet.balance(), 1010000n);
+  assert.equal(x.bank(), 10n ** 12n + 10000n - 20000n - 50n);
+});

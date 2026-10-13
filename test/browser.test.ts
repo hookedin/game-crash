@@ -1,0 +1,87 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { chromium } from 'playwright-core';
+import type { FrameLocator } from 'playwright-core';
+import { mkdir } from 'node:fs/promises';
+import { startHarness } from './harness.ts';
+import { CHAIN, SECRET } from './fixture.ts';
+import { BOARDING_MS, timeTo, crashPoint, COOLDOWN_MS } from '../src/rules.ts';
+
+test(
+  'two browser pilots share a flight, cash out manually and automatically, recover on reload and verify its record',
+  { timeout: 60_000 },
+  async t => {
+    const host = await startHarness({ clock: () => 1_000_000 });
+    t.after(() => host.close());
+    const browser = await chromium.launch({ channel: 'chrome' });
+    t.after(() => browser.close());
+    const context = await browser.newContext({ viewport: { width: 1360, height: 1000 }, reducedMotion: 'reduce' });
+    const alice = await context.newPage(),
+      bob = await context.newPage(),
+      errors: string[] = [];
+    for (const page of [alice, bob]) page.on('pageerror', error => errors.push(error.message));
+    // The second pilot's browser has no Web Audio: sound decorates the game, and it plays on without it.
+    await bob.addInitScript('delete window.AudioContext');
+    await Promise.all([alice.goto(host.url), bob.goto(host.url)]);
+    const a = alice.frameLocator('iframe'),
+      b = bob.frameLocator('iframe');
+    /** A pilot's seat, and what its page says if the seat never comes. */
+    const aboard = (pilot: FrameLocator) =>
+      pilot
+        .locator('.crew-row[data-state=aboard]', { hasText: 'YOU' })
+        .waitFor()
+        .catch(async error => {
+          const says = await Promise.all(['#status', '#action-label'].map(id => pilot.locator(id).textContent()));
+          throw new Error(
+            `${error.message}\nThe page says: ${says.join(' · ')}\nPage errors: ${errors.join('; ') || 'none'}`,
+          );
+        });
+    await a.locator('#action:not([disabled])').waitFor();
+    await b.locator('#action:not([disabled])').waitFor();
+    await a.locator('#auto-enabled').uncheck();
+    await a.locator('#action').click();
+    await aboard(a);
+    await b.locator('#action').click();
+    await aboard(b);
+    await a.locator('#crew-count', { hasText: /^2$/ }).waitFor();
+    assert.equal(await a.locator('#flight-id').textContent(), await b.locator('#flight-id').textContent());
+    await mkdir('test-results', { recursive: true });
+    await alice.screenshot({ path: 'test-results/desktop.png' });
+    await host.advance(BOARDING_MS + 500);
+    await a.locator('#action[data-escape=true]:not([disabled])').waitFor();
+    await a.locator('#action').click();
+    await a.locator('#action-label', { hasText: /^Escape accepted ✓$/ }).waitFor();
+    await a.locator('#status', { hasText: /It is paid when the flight lands\.$/ }).waitFor();
+    // The second page reloads while its auto escape is still active. The same saved bet and escape key are recovered.
+    await bob.reload();
+    await aboard(b);
+    await host.advance(timeTo(200));
+    await a.locator('#escaped-count', { hasText: /^2$/ }).waitFor();
+    // Both are paid once the flight has crashed: each settlement reveals its secret.
+    await host.advance(timeTo(crashPoint(SECRET, CHAIN.salt)));
+    await a.locator('#status', { hasText: /is in your balance/ }).waitFor();
+    await b.locator('#status', { hasText: /Escaped at 2.00×/ }).waitFor();
+    await host.advance(COOLDOWN_MS);
+    await a.locator('#history button').first().waitFor();
+    await a.locator('#history button').first().click();
+    await a.locator('#proof-status[data-valid=true]').waitFor();
+    assert.match((await a.locator('#proof-status').textContent()) ?? '', /^Match:.* Its ID is the chain’s end\.$/);
+    await a.locator('#check-chain').click();
+    await a.locator('#chain-status[data-valid=true]').waitFor();
+    await a.locator('#close-proof').click();
+    // A phone's wallet leaves the game 375x700 (the preview's header takes 30px more): no horizontal scrolling, and
+    // the action in view without scrolling.
+    await alice.setViewportSize({ width: 375, height: 730 });
+    const metrics = await a.locator('body').evaluate(body => ({
+      page: body.scrollWidth,
+      viewport: window.innerWidth,
+      action: document.getElementById('action')!.getBoundingClientRect().bottom,
+      height: window.innerHeight,
+    }));
+    assert.ok(metrics.page <= metrics.viewport, `${metrics.page} overflows ${metrics.viewport}`);
+    assert.ok(metrics.action <= metrics.height, `the action ends at ${metrics.action}, below ${metrics.height}`);
+    await alice.screenshot({ path: 'test-results/mobile.png' });
+    assert.deepEqual(errors, []);
+    assert.equal((await host.room.view()).history.length, 1);
+  },
+);

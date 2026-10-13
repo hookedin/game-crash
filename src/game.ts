@@ -1,5 +1,5 @@
 import { keccak256 } from 'ethers';
-import { HookedIn } from '@hookedin/play/sdk/sdk';
+import { HookedIn, HookedInError } from '@hookedin/play/sdk/sdk';
 import type { GameReceipt } from '@hookedin/play/sdk/sdk';
 import { json, read } from '@hookedin/play/sdk/json';
 import { createSynth } from '@hookedin/play/sdk/synth';
@@ -87,6 +87,8 @@ const message = (text: string, error = false) => {
   $('status').textContent = text;
   $('status').dataset.error = String(error);
 };
+/** What the status says to a player without a seat. */
+const welcome = 'Everyone rides the same rocket. Join, then escape before it crashes.';
 const persist = () => (saved ? localStorage.setItem(scope, json(saved)) : localStorage.removeItem(scope));
 const amount = (value: bigint) => HookedIn.formatAmount(value);
 const ownTicket = () => view?.tickets.find(t => t.bet === saved?.bet || t.uname === uname);
@@ -500,8 +502,8 @@ async function join() {
   // A seat is a developer bet, which the player allows apart from the casino's, with the allowance in the wallet's top
   // bar.
   const current = await HookedIn.allowance();
-  if (current.allowance < value) throw new Error(HookedIn.NOT_ENOUGH_ALLOWANCE);
-  if (!current.developerBets) throw new Error('Allow developer bets with the allowance in the top bar.');
+  if (current.allowance < value) throw new HookedInError('insufficient-allowance', HookedIn.NOT_ENOUGH_ALLOWANCE);
+  if (!current.developerBets) throw new HookedInError('developer-bets-not-allowed', HookedIn.NO_DEVELOPER_BETS);
   // Check the room again before saving or signing anything.
   if (!fresh() || view.phase !== 'boarding' || view.startsAt - serverNow() < 1_000)
     throw new Error('Boarding has closed. Join the next flight.');
@@ -646,6 +648,11 @@ async function start() {
     HookedIn.onReceipt(receipt => {
       void receive(receipt);
     });
+    // A refusal for want of allowance goes once the player changes the allowance in the top bar.
+    HookedIn.onAllowance(() => {
+      const shown = $('status').textContent;
+      if (shown === HookedIn.NOT_ENOUGH_ALLOWANCE || shown === HookedIn.NO_DEVELOPER_BETS) message(welcome);
+    });
     if (saved) {
       stake.value = HookedIn.exactAmount(saved.stake);
       auto.checked = saved.auto !== null;
@@ -655,7 +662,7 @@ async function start() {
       else await act(ask);
       // An escape asked for before the reload goes again at once, if the room is in flight.
       await carryOn();
-    } else message('Everyone rides the same rocket. Join, then escape before it crashes.');
+    } else message(welcome);
   } catch (error: any) {
     message(error.message, true);
   }

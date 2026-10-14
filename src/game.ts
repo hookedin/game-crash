@@ -648,10 +648,17 @@ async function start() {
     HookedIn.onReceipt(receipt => {
       void receive(receipt);
     });
-    // A refusal for want of allowance goes once the player changes the allowance in the top bar.
-    HookedIn.onAllowance(() => {
+    // The game opens saying to set an allowance in the top bar: that word, or a refusal for want of allowance or of
+    // leave for developer bets, goes once the player sets one.
+    HookedIn.onAllowance(({ allowance }) => {
       const shown = $('status').textContent;
-      if (shown === HookedIn.NOT_ENOUGH_ALLOWANCE || shown === HookedIn.NO_DEVELOPER_BETS) message(welcome);
+      if (
+        allowance &&
+        (shown === HookedIn.NO_ALLOWANCE ||
+          shown === HookedIn.NOT_ENOUGH_ALLOWANCE ||
+          shown === HookedIn.NO_DEVELOPER_BETS)
+      )
+        message(welcome);
     });
     if (saved) {
       stake.value = HookedIn.exactAmount(saved.stake);
@@ -662,7 +669,7 @@ async function start() {
       else await act(ask);
       // An escape asked for before the reload goes again at once, if the room is in flight.
       await carryOn();
-    } else message(welcome);
+    } else message((await HookedIn.allowance()).allowance ? welcome : HookedIn.NO_ALLOWANCE);
   } catch (error: any) {
     message(error.message, true);
   }

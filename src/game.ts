@@ -15,7 +15,6 @@ import {
   multiplierText,
   payoutAt,
   readFlightId,
-  readHundredths,
   readProof,
   readTicket,
   readView,
@@ -39,7 +38,7 @@ const remembered = read.object<Saved>({
   id: read.text,
   flight: readFlightId,
   stake: read.whole,
-  auto: read.nullable(readHundredths),
+  auto: read.nullable(read.count),
   token: read.exactly(isSecret, 'An escape key'),
   bet: read.optional(read.hash),
   escapeRequested: read.optional(read.flag),
@@ -53,7 +52,7 @@ const stake = $<HTMLInputElement>('stake'),
 const action = $<HTMLButtonElement>('action'),
   stage = $('stage'),
   toastBox = $('toast');
-const sound = createSynth('crash:sound');
+const sound = createSynth();
 const sky = createSky($<HTMLCanvasElement>('sky'), matchMedia('(prefers-reduced-motion: reduce)').matches);
 let ready = false,
   working = false,
@@ -293,7 +292,6 @@ async function checkChain(flight: FlightSummary) {
   status.dataset.valid = String(valid);
 }
 
-/** What joining now wins at the auto escape, before anyone boards. */
 /** Why the game's bank cannot take the seat as set, as the room last said what its bank covers: what the seat can take
  * from it, beyond its own stake, is more than that. Empty when it can, or nothing says. */
 function bankShort() {

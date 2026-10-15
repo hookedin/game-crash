@@ -120,32 +120,26 @@ export interface FlightProof extends FlightSummary {
   tickets: PublicTicket[];
 }
 
-/** Hundredths of a multiplier, as JSON holds them. */
-export const readHundredths = read.exactly(
-  (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0,
-  'Hundredths',
-);
 export const readFlightId = read.exactly(
   (value: unknown): value is string => typeof value === 'string' && /^[0-9a-f]{64}$/.test(value),
   'A flight',
 );
-const readSecret = read.exactly(isSecret, 'A secret');
 /** A flight's number along its chain. */
 const readNumber = read.exactly(
   (value: unknown): value is number =>
     Number.isSafeInteger(value) && (value as number) >= 1 && (value as number) <= CHAIN_LENGTH,
   'A flight number',
 );
-const summary = { number: readNumber, id: readFlightId, point: readHundredths, secret: readSecret };
+const summary = { number: readNumber, id: readFlightId, point: read.count, secret: read.hash };
 /** A ticket as the room's JSON holds it. */
 export const readTicket = read.object<PublicTicket>({
   bet: read.hash,
   uname: read.text,
   discordUsername: read.nullable(read.text),
   stake: read.whole,
-  auto: read.nullable(readHundredths),
+  auto: read.nullable(read.count),
   status: read.oneOf('aboard', 'escaped', 'lost'),
-  multiplier: read.nullable(readHundredths),
+  multiplier: read.nullable(read.count),
   payout: read.nullable(read.whole),
   paid: read.flag,
 });
@@ -156,9 +150,9 @@ export const readView = read.object<FlightView>({
   phase: read.oneOf('boarding', 'flying', 'ended'),
   startsAt: read.time,
   now: read.time,
-  multiplier: readHundredths,
-  point: read.nullable(readHundredths),
-  secret: read.nullable(readSecret),
+  multiplier: read.count,
+  point: read.nullable(read.count),
+  secret: read.nullable(read.hash),
   tickets: read.list(readTicket, MAX_CREW),
   history: read.list(read.object<FlightSummary>(summary), 12),
   chain: read.object<Chain>({

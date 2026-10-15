@@ -1,10 +1,9 @@
 /** Local preview and browser-test host. Each visitor gets an SDK wallet fixture against an in-memory casino stub.
  * Their developer feeds are combined into one real Room. No keys, balances or endpoints here belong to a deployment. */
 import http from 'node:http';
-import fs from 'node:fs/promises';
-import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
+import { createStaticServer } from '@hookedin/play/sdk/bin/hookedin-game.js';
 import { gameWallet } from '@hookedin/play/testing/game-wallet.ts';
 import { json, read } from '@hookedin/play/sdk/json';
 import type { GameReceipt } from '@hookedin/play/sdk/sdk';
@@ -14,7 +13,8 @@ import { Room } from '../server/room.ts';
 import { checkpoints, secretAt, seedOf } from '../server/chain.ts';
 import { CHAIN, KEY } from './fixture.ts';
 
-const root = fileURLToPath(new URL('../', import.meta.url));
+/** The built page, served as its host serves it, with its `_headers`. */
+const built = createStaticServer(fileURLToPath(new URL('../dist', import.meta.url)));
 /** The bridge crosses this host as JSON, each of its bigints tagged, and comes out with its bigints again. */
 const encode = (value: unknown) => JSON.stringify(value, (_, v) => (typeof v === 'bigint' ? { bigint: String(v) } : v));
 const decode = (text: string) =>
@@ -200,26 +200,8 @@ export async function startHarness({ port = 0, clock = Date.now }: { port?: numb
         }
       }
       if (url.pathname.startsWith('/game/')) {
-        const name = decodeURIComponent(url.pathname.slice(6)) || 'index.html';
-        if (name.split('/').some(part => part.startsWith('.')) || name.includes('\\')) throw new Error('Not found');
-        const types: Record<string, string> = {
-          '.html': 'text/html',
-          '.js': 'text/javascript',
-          '.css': 'text/css',
-          '.svg': 'image/svg+xml',
-          '.json': 'application/json',
-        };
-        const type = types[path.extname(name)];
-        if (!type) throw new Error('Not found');
-        const data = await fs.readFile(path.join(root, 'dist', name));
-        return void res
-          .writeHead(200, {
-            'Content-Type': type,
-            'Cache-Control': 'no-store',
-            'Content-Security-Policy':
-              "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'",
-          })
-          .end(data);
+        req.url = req.url!.slice('/game'.length);
+        return void built.emit('request', req, res);
       }
       res.writeHead(404).end();
     } catch (error: any) {

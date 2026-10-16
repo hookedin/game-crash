@@ -563,6 +563,8 @@ async function carryOn() {
   if (receipt) await receive(receipt);
 }
 
+/** Why the room could not open. */
+const readDown = read.object<{ error: string }>({ error: read.text });
 /** The room's events: each change, and the room every few seconds. A page that hears nothing for a while connects
  * again. */
 function connect() {
@@ -573,6 +575,12 @@ function connect() {
     setView(readView(JSON.parse(event.data)));
     void carryOn().catch(error => message(error.message, true));
   };
+  // The room could not open, and says why. The page connects again once it has heard nothing for a while.
+  source.addEventListener('down', event => {
+    source?.close();
+    message(readDown(JSON.parse((event as MessageEvent).data)).error, true);
+    render();
+  });
 }
 setInterval(() => {
   if (fresh() || performance.now() - connectedAt < STALE_MS) return;

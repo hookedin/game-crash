@@ -20,6 +20,9 @@ simulated funds: every visitor gets an SDK wallet fixture and an in-memory casin
 their shared room; the preview combines the fixtures' developer feeds. Restarting the preview clears its sessions.
 The preview harness is in `test/` and is not part of the Worker or its built assets.
 
+Trying developer bets with the real casino takes a published game and real ETH: see
+[trying it](https://hookedin.com/docs/games/developer-bets/#trying-it) and [Run against HookedIn](#run-against-hookedin).
+
 ## Play
 
 - Choose a stake and optionally an auto-escape target from 1.01× to 100×.
@@ -122,29 +125,36 @@ has it. While a page watches or somebody is aboard or owed, the room sets its al
 payouts have been settled. Flights that had a crew remain at `/api/flights/<id>`.
 
 Pages watch the room at `/api/live`, a stream of server-sent events: the room as it stands, each change as it happens,
-and the room every 3 seconds while nothing changes. They animate locally between events. While a page watches, the room
-follows the casino's bets: the casino holds each read until a bet on the game is placed, so a seat shows as soon as the
-wallet has placed it. A page that hears nothing for 7 seconds pauses its controls and connects again. A page asks its
-wallet about its bet once the room shows it paid or given back. Only actual accepted bets appear in the crew; there are
-no invented players.
+and the room every 3 seconds while nothing changes; a room that cannot open answers with one `down` event that says why,
+which the page shows. They animate locally between events. While a page watches, the room follows the casino's bets: the
+casino holds each read until a bet on the game is placed, so a seat shows as soon as the wallet has placed it. A page
+that hears nothing for 7 seconds pauses its controls and connects again. A page asks its wallet about its bet once the
+room shows it paid or given back. Only actual accepted bets appear in the crew; there are no invented players.
 
 ## Run against HookedIn
 
-Publish the game as `crash`, with this Worker's URL, on **Developer** in your wallet, and put money in its bank there:
-publishing makes your account the game's developer, and the room seats only what the bank can pay. A developer bet needs a published game; opening the game by its URL alone does not publish it. The
-Worker names the game by its ID, `GAME`, which the **Developer** page shows beside it, and signs with the game's server
-key, `SERVER_KEY`: a key you make for the Worker and name there, which spends the game's bank on its settlements and
-nothing else. Until you name one, the server key is your account's own.
+Publish the game as `crash`, with the URL its Worker runs on, on **Developer** in your wallet, from an account with a
+balance, and put money in its bank there: publishing makes your account the game's developer, and the room seats only
+what the bank can pay. A developer bet needs a published game; opening the game by its URL alone does not publish it.
+The Worker names the game by its ID, `GAME`, which the **Developer** page shows under it, and signs with the game's
+server key, `SERVER_KEY`, which spends the game's bank on its settlements and nothing else. In the game's folder, this
+makes the key, saves it in `.dev.vars`, which git ignores, and prints only its address, which you name as the game's
+server key on **Developer**:
 
-For local Worker development, put `GAME`, `SERVER_KEY` and a chain in `.dev.vars`, point `CASINO_URL` in
-`wrangler.jsonc` at the chosen casino and run `npm run dev`. A chain for development needs no ceremony: `CHAIN_END` is
-what `npm run chain` prints for the key, and any block number and 32-byte hash do for `CHAIN_BLOCK` and `CHAIN_SALT`.
-With the tests' server key, which the local preview flies on too:
+```sh
+node -e "const w = require('ethers').Wallet.createRandom(); require('fs').appendFileSync('.dev.vars', 'SERVER_KEY=' + w.privateKey + '\n'); console.log(w.address)"
+```
+
+The key goes nowhere but `.dev.vars` and `npx wrangler secret put SERVER_KEY`
+([the server key](https://hookedin.com/docs/games/developer-bets/#your-games-server-key-and-bank)).
+
+For local Worker development, add `GAME` and a chain to `.dev.vars`, point `CASINO_URL` in `wrangler.jsonc` at the
+chosen casino and run `npm run dev`. A chain for development needs no ceremony: `CHAIN_END` is what `npm run chain`
+prints for the key in `.dev.vars`, and any block number and 32-byte hash do for `CHAIN_BLOCK` and `CHAIN_SALT`:
 
 ```sh
 GAME=<the game's ID>
-SERVER_KEY=0x1111111111111111111111111111111111111111111111111111111111111111
-CHAIN_END=0x0eefc6aacb5f0146a005332b371b93f0e02df6f31dc1640b4da1c70cc7aa97ae
+CHAIN_END=<what npm run chain prints>
 CHAIN_BLOCK=1
 CHAIN_SALT=0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 ```
@@ -168,18 +178,20 @@ are in `test-results/`. The SDK wallet tests use an in-memory casino stub, not a
 ## Deploy
 
 1. Set the Worker name and route in `wrangler.jsonc`.
-2. Publish the Worker's URL as `Crash`, set `GAME` in `wrangler.jsonc` to its ID, make a server key, name it beside the
-   game on **Developer** and set it with `npx wrangler secret put SERVER_KEY`.
+2. Publish the game's name with the Worker's URL, which keeps its ID and bank, and set `GAME` in `wrangler.jsonc` to
+   that ID. Give the Worker a server key no other room has flown on, since a room reveals its chain's secrets as it
+   flies: make it as in [Run against HookedIn](#run-against-hookedin), in place of the one in `.dev.vars`, name its
+   address on **Developer** and set it with `npx wrangler secret put SERVER_KEY`.
 3. In the repository's Actions settings, add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. From then on every push
    to `main` tests, builds and deploys, on play's newest `main`, and commits the lockfile it tested; play's release runs
    it whenever its `main` moves.
-4. Run the ceremony, which fixes the chain in public. With the server key as `SERVER_KEY` in the environment,
-   `npm run chain` prints its chain's end in a few seconds. Set `CHAIN_END` to it and `CHAIN_BLOCK` to an Ethereum block
-   an hour or so ahead of the newest, and push both to `main`: that push is the commitment, so it must come before the
-   block. Once the block is mined, set `CHAIN_SALT` to its hash and push again. Until then the room refuses to fly, as
-   it does whenever `SERVER_KEY`'s chain does not end at `CHAIN_END`.
+4. Run the ceremony, which fixes the chain in public. `npm run chain` prints the chain's end of `SERVER_KEY`, from the
+   environment or else `.dev.vars`, in a few seconds. Set `CHAIN_END` to it and `CHAIN_BLOCK` to an Ethereum block an hour or so ahead of
+   the newest, and push both to `main`: that push is the commitment, so it must come before the block. Once the block
+   is mined, set `CHAIN_SALT` to its hash and push again. Until then the room refuses to fly, as it does whenever
+   `SERVER_KEY`'s chain does not end at `CHAIN_END`.
 5. Fund the game's bank on **Developer**.
 
-`npx wrangler deploy` publishes by hand. It is served at `https://crash-game.hookedin.com/`.
+`npx wrangler deploy` deploys by hand. It is served at `https://crash-game.hookedin.com/`.
 
 [MIT](LICENSE)

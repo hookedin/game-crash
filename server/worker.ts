@@ -10,7 +10,7 @@ interface Env {
   ASSETS: Fetcher;
   FLIGHTS: DurableObjectNamespace;
   CASINO_URL: string;
-  /** The game's ID, which the wallet's Developer page shows beside the game. */
+  /** The game's ID, which the wallet's Developer page shows under the game. */
   GAME: string;
   /** The private key of the game's server, which its developer names on the Developer page. A secret. */
   SERVER_KEY: string;
@@ -23,6 +23,7 @@ interface Env {
 const respond = (value: unknown, status = 200) =>
   new Response(json(value), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 const encoder = new TextEncoder();
+const STREAM = { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store' };
 /** How many events a page may fall behind by before it is dropped; it connects again. */
 const MAX_BEHIND = 16;
 
@@ -103,14 +104,15 @@ export class CrashRoom implements DurableObject {
       throw error;
     }
     void room.follow();
-    return new Response(readable, { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store' } });
+    return new Response(readable, { headers: STREAM });
   }
 
   async fetch(request: Request) {
+    const url = new URL(request.url),
+      live = url.pathname === '/api/live' && request.method === 'GET';
     try {
-      const url = new URL(request.url),
-        room = await this.open();
-      if (url.pathname === '/api/live' && request.method === 'GET') return await this.watch(room);
+      const room = await this.open();
+      if (live) return await this.watch(room);
       if (url.pathname === '/api/cashout' && request.method === 'POST') {
         // Read no further than a cash-out takes.
         let text = '';
@@ -145,10 +147,11 @@ export class CrashRoom implements DurableObject {
       }
       return respond({ error: 'Not found.' }, 404);
     } catch (error: any) {
-      return respond(
-        { error: error.message || 'The flight room is unavailable.' },
-        error instanceof GameError ? error.status : 503,
-      );
+      const reason = error.message || 'The flight room is unavailable.';
+      if (!(error instanceof GameError)) console.error('Flight room:', reason);
+      // A page's event stream reads no refused answer, so it is told why in an event, and connects again later.
+      if (live) return new Response(`event: down\ndata: ${json({ error: reason })}\n\n`, { headers: STREAM });
+      return respond({ error: reason }, error instanceof GameError ? error.status : 503);
     }
   }
 

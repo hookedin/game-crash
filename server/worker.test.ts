@@ -149,16 +149,22 @@ test('the room computes SERVER_KEY’s chain once and keeps it, and refuses to f
     [{ CHAIN_END: '0x' + 'f'.repeat(64) }, /^SERVER_KEY’s chain does not end at CHAIN_END/],
     [{ SERVER_KEY: KEY.slice(2) }, /^SERVER_KEY is not 32 bytes/],
   ] as const) {
-    const refused = await fixture(t, vars).get('/api/live');
-    assert.equal(refused.status, 503);
-    assert.match(((await refused.json()) as { error: string }).error, error);
+    // The page's event stream hears why, and the Worker's log has it.
+    const logged = t.mock.method(console, 'error', () => {}),
+      refused = await fixture(t, vars).get('/api/live');
+    assert.equal(refused.headers.get('content-type'), 'text/event-stream');
+    const down = /^event: down\ndata: (.*)\n\n$/.exec(await refused.text());
+    assert.match((JSON.parse(down![1]!) as { error: string }).error, error);
+    assert.match(String(logged.mock.calls.at(-1)!.arguments[1]), error);
+    logged.mock.restore();
   }
 });
 
 test('startup recovers when the casino returns, and malformed or unauthenticated cash-outs fail', async t => {
   const x = fixture(t);
   x.reachable(false);
-  assert.equal((await x.get('/api/live')).status, 503);
+  t.mock.method(console, 'error', () => {});
+  assert.match(await (await x.get('/api/live')).text(), /^event: down\n/);
   x.reachable(true);
   assert.equal((await x.watch()).response.status, 200);
   assert.equal((await x.post('{')).status, 400);

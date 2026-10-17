@@ -20,8 +20,11 @@ simulated funds: every visitor gets an SDK wallet fixture and an in-memory casin
 their shared room; the preview combines the fixtures' developer feeds. Restarting the preview clears its sessions.
 The preview harness is in `test/` and is not part of the Worker or its built assets.
 
-Trying developer bets with the real casino takes a published game and real ETH: see
-[trying it](https://hookedin.com/docs/games/developer-bets/#trying-it) and [Run against HookedIn](#run-against-hookedin).
+The Worker itself plays with pretend money against the stand-in casino of `hookedin-game serve`
+([trying it](https://hookedin.com/docs/games/developer-bets/#trying-it)): run
+`npx hookedin-game serve http://127.0.0.1:8791/`, put the `CASINO_URL`, `GAME` and `SERVER_KEY` it prints in
+`.dev.vars` with a chain for that key, as in [Run against HookedIn](#run-against-hookedin), then run `npm run dev` and
+play at `http://localhost:4185/`. With the real casino, developer bets take a published game and real ETH.
 
 ## Play
 
